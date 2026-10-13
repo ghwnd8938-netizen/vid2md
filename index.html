@@ -574,6 +574,12 @@ async function loadDict() {
   let r;
   try { r = await api("dictionary"); } catch (err) { $("#dict-list").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
   $("#dict-edit").hidden = !r.can_edit;
+  if (r.cleaned) {
+    const c = r.cleaned, parts = [];
+    if (c.duplicates) parts.push(`겹친 말 ${c.duplicates}개`);
+    if (c.broken) parts.push(`날짜로 잘못 저장된 말 ${c.broken}개`);
+    $("#dict-status").textContent = `${parts.join(", ")}를 정리했어요.` + (c.broken ? " 지워진 말(예: APR1400)은 다시 넣어 주세요." : "");
+  }
   dictGroups = r.groups || [];
   privateGroups = r.private_groups || [];
   fillGroups(dictGroups);
@@ -641,8 +647,9 @@ $("#dict-group").onchange = () => {
   const opt = document.createElement("option"); opt.value = name; opt.textContent = newPrivate[name] ? `🔒 ${name}` : name;
   $("#dict-group").insertBefore(opt, $("#dict-group").lastElementChild); $("#dict-group").value = name;
 };
-$("#dict-form").onsubmit = async (e) => {
-  e.preventDefault(); $("#dict-error").textContent = "";
+$("#dict-form").onsubmit = (e) => { e.preventDefault(); busy($("#dict-form button"), "추가 중…", addOne); };
+async function addOne() {
+  $("#dict-error").textContent = "";
   const group = $("#dict-group").value === "__new" ? "" : $("#dict-group").value;
   try {
     const r = await api("dict_add", {wrong: $("#dict-wrong").value, right: $("#dict-right").value, group, private: !!newPrivate[group]});
@@ -652,7 +659,14 @@ $("#dict-form").onsubmit = async (e) => {
     loadDict(); $("#dict-wrong").focus();
   } catch (err) { $("#dict-error").textContent = err.message; }
 };
-$("#dict-import").onclick = async () => {
+// One save at a time: a second click while the first is still saving would add everything twice.
+async function busy(button, label, work) {
+  if (button.disabled) return;
+  const text = button.textContent;
+  button.disabled = true; button.textContent = label;
+  try { return await work(); } finally { button.disabled = false; button.textContent = text; }
+}
+$("#dict-import").onclick = () => busy($("#dict-import"), "넣는 중…", async () => {
   $("#dict-error").textContent = "";
   const group = $("#dict-group").value === "__new" ? "" : $("#dict-group").value;
   try {
@@ -660,14 +674,14 @@ $("#dict-import").onclick = async () => {
     $("#dict-text").value = ""; $("#dict-bulk").open = false;
     $("#dict-status").textContent = `${r.added}개 넣었어요.`; dictTab = "*"; loadDict();
   } catch (err) { $("#dict-error").textContent = err.message; }
-};
+});
 async function loadGroups() {
   try { const r = await api("dictionary"); privateGroups = r.private_groups || []; fillGroups(r.groups || []); } catch {}
 }
-$("#dict-starter").onclick = async () => {
+$("#dict-starter").onclick = () => busy($("#dict-starter"), "넣는 중…", async () => {
   try { const r = await api("dict_starter"); $("#dict-status").textContent = `기본 목록에서 ${r.added}개 넣었어요.`; loadDict(); }
   catch (err) { alert(err.message); }
-};
+});
 $("#dict-apply").onclick = async () => {
   const btn = $("#dict-apply");
   btn.disabled = true; $("#dict-status").textContent = "적용하는 중…";
