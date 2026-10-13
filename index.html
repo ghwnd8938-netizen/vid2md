@@ -92,6 +92,15 @@
   .facts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   .facts span { font-size: 12px; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; }
   .limits { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 8px; margin: 0 0 10px; padding: 8px 10px 8px 26px; }
+  .viewer h3 { font-size: 14px; margin: 14px 0 6px; }
+  .viewer ul.md { margin: 6px 0 10px; padding-left: 20px; }
+  .viewer ul.md li { margin: 2px 0; }
+  .viewer .summary { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px 8px; margin: 12px 0 4px; }
+  .spk { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 5px; margin-right: 4px; background: var(--sunk); border: 1px solid var(--line); }
+  .spk.s1 { color: #2f6db5; } .spk.s2 { color: #b5532f; } .spk.s3 { color: #6a2fb5; } .spk.s4 { color: #2f8a4c; } .spk.s5 { color: #a8862a; }
+  details.opts summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details.opts .stack { margin-top: 8px; gap: 6px; }
+  .field.tiny { width: 70px; padding: 3px 7px; }
   .hit { padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
   .hit b { cursor: pointer; }
   mark { background: var(--mark); color: inherit; border-radius: 2px; }
@@ -162,6 +171,15 @@
         </div>
         <input class="field" type="text" id="prompt" placeholder="자주 나오는 용어 (선택) 예: MCP, Claude Code, API">
         <label class="check" id="force-wrap" hidden><input type="checkbox" id="force"> 자막이 있어도 음성 인식</label>
+        <details class="opts" id="opts">
+          <summary>추가 기능</summary>
+          <div class="stack">
+            <label class="check"><input type="checkbox" id="opt-diarize"> 화자 구분 (누가 말했는지 표시)
+              <input class="field tiny" type="number" id="opt-speakers" min="1" max="20" placeholder="몇 명" title="화자 수를 알면 입력 (정확도 향상)"></label>
+            <label class="check"><input type="checkbox" id="opt-denoise"> 배경음악 제거 (음악이 큰 영상만, 느려짐)</label>
+            <label class="check" id="opt-summary-wrap" hidden><input type="checkbox" id="opt-summary"> AI 요약·목차 (유료: 영상당 약 100~400원)</label>
+          </div>
+        </details>
         <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text"></div></div>
         <button class="btn primary" id="submit">변환 시작</button>
         <div class="error" id="new-error"></div>
@@ -209,7 +227,7 @@ const store = {
   set(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 let token = store.get("vid2md.token"), me = null, jobs = [], filter = "all", tab = "file", picked = null;
-let pollTimer = null, waitTimer = null, openId = null;
+let pollTimer = null, waitTimer = null, openId = null, canSummarize = false;
 
 /* ---------- API (Apps Script: JSON as text/plain avoids a CORS preflight) ---------- */
 async function api(action, params = {}) {
@@ -272,7 +290,8 @@ function handleLogin(r, user) {
 }
 
 async function enter() {
-  try { me = (await api("me")).user; } catch { return; }
+  try { const r = await api("me"); me = r.user; canSummarize = !!r.summary; } catch { return; }
+  $("#opt-summary-wrap").hidden = !canSummarize;
   $("#login").hidden = true; $("#app").hidden = false; $("#who").hidden = false;
   $("#who-name").textContent = me.name;
   $("#who-admin").hidden = me.role !== "admin";
@@ -334,14 +353,16 @@ function pick(file) { picked = file || null; $("#picked").textContent = picked ?
 $("#new-form").onsubmit = async (e) => {
   e.preventDefault(); $("#new-error").textContent = "";
   const prompt = $("#prompt").value;
+  const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
+                   denoise: $("#opt-denoise").checked, summary: canSummarize && $("#opt-summary").checked};
   $("#submit").disabled = true;
   try {
     if (tab === "url") {
-      await api("add_link", {url: $("#url").value, prompt, force_whisper: $("#force").checked});
+      await api("add_link", {url: $("#url").value, prompt, force_whisper: $("#force").checked, options});
       $("#url").value = "";
     } else {
       if (!picked) throw new Error("파일을 고르세요.");
-      await upload(picked, prompt); pick(null); $("#file").value = "";
+      await upload(picked, prompt, options); pick(null); $("#file").value = "";
     }
     refresh();
   } catch (err) { $("#new-error").textContent = err.message; }
@@ -357,8 +378,8 @@ function readBase64(blob) {
   });
 }
 
-async function upload(file, prompt) {
-  const start = await api("upload_start", {name: file.name, size: file.size, prompt});
+async function upload(file, prompt, options) {
+  const start = await api("upload_start", {name: file.name, size: file.size, prompt, options});
   const size = start.chunk_bytes, total = start.chunks;
   let next = 0, done = 0;
   const show = () => {
@@ -409,6 +430,7 @@ function renderJobs() {
       <div class="title">${esc(job.title)}</div>
       <div class="meta"><span class="chip ${esc(job.status)}">${STATUS[job.status] || esc(job.status)}</span>
         ${job.method ? `<span>${esc(METHOD[job.method] || job.method)}</span>` : ""}
+        ${optionTags(job.options)}
         ${job.status === "running" ? `<span>${esc(job.stage)}${pct ? ` ${pct}%` : ""}</span>` : ""}
         ${job.status === "queued" && job.stage ? `<span>${esc(job.stage)}</span>` : ""}
         <span>${new Date(job.created * 1000).toLocaleString("ko-KR", {dateStyle: "short", timeStyle: "short"})}</span></div>
@@ -423,6 +445,12 @@ function renderJobs() {
     el.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => act(job, b.dataset.act));
     box.appendChild(el);
   }
+}
+
+function optionTags(o) {
+  o = o || {};
+  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.summary && "AI 요약"]
+    .filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join(" ");
 }
 
 async function act(job, action) {
@@ -441,11 +469,40 @@ async function act(job, action) {
 
 async function downloadMd(id) {
   const r = await api("job", {id});
+  save(r.job.title, ".md", r.markdown, "text/markdown");
+}
+
+function save(title, ext, text, type) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([r.markdown], {type: "text/markdown;charset=utf-8"}));
-  a.download = `${r.job.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, " ").trim() || "transcript"}.md`;
+  a.href = URL.createObjectURL(new Blob([text], {type: `${type};charset=utf-8`}));
+  a.download = `${String(title).replace(/[<>:"/\\|?*\x00-\x1f]/g, " ").trim() || "transcript"}${ext}`;
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+/* ---------- subtitle / text exports from timed segments [start, end, text, speaker] (same as vid2md.export) ---------- */
+function clock(sec, sep) {
+  let ms = Math.round(Math.max(sec, 0) * 1000);
+  const h = Math.floor(ms / 3600000); ms -= h * 3600000;
+  const m = Math.floor(ms / 60000); ms -= m * 60000;
+  const s = Math.floor(ms / 1000); ms -= s * 1000;
+  const p = (n, w) => String(n).padStart(w, "0");
+  return `${p(h, 2)}:${p(m, 2)}:${p(s, 2)}${sep}${p(ms, 3)}`;
+}
+const cue = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const EXPORTS = {
+  srt: (segs) => segs.map(([a, b, t, who], i) =>
+    `${i + 1}\n${clock(a, ",")} --> ${clock(Math.max(b, a + 0.2), ",")}\n${who ? `[${who}] ` : ""}${t}\n`).join("\n"),
+  vtt: (segs) => "WEBVTT\n\n" + segs.map(([a, b, t, who]) =>
+    `${clock(a, ".")} --> ${clock(Math.max(b, a + 0.2), ".")}\n${who ? `<v ${cue(who)}>` : ""}${cue(t)}\n`).join("\n"),
+  txt: (segs) => {
+    const paras = [];
+    for (const [, , t, who] of segs) {
+      const last = paras[paras.length - 1];
+      if (last && last.who === who) last.texts.push(t); else paras.push({who, texts: [t]});
+    }
+    return paras.map((p) => (p.who ? `${p.who}: ` : "") + p.texts.join(" ")).join("\n\n") + "\n";
+  },
+};
 
 /* ---------- Markdown written by vid2md -> HTML (escaped) ---------- */
 function splitFrontMatter(text) {
@@ -464,14 +521,39 @@ function splitFrontMatter(text) {
   return [meta, text.slice(end + 5)];
 }
 function scalar(v) { if (v.startsWith('"')) { try { return JSON.parse(v); } catch {} } return v; }
+let speakerClass = {};
 function inline(text) {
   return esc(text)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (m, label, url) => `<a class="t" href="${url}" target="_blank" rel="noopener">${label}</a>`)
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, (m, who) => {
+      if (!/^화자 \d+$/.test(who)) return `<b>${who}</b>`;
+      speakerClass[who] = speakerClass[who] || `s${(Object.keys(speakerClass).length % 5) + 1}`;
+      return `<span class="spk ${speakerClass[who]}">${who}</span>`;
+    });
+}
+function block(b) {
+  if (b.startsWith("## ")) return `<h2>${esc(b.slice(3))}</h2>`;
+  if (b.startsWith("### ")) {
+    const [head, ...rest] = b.split("\n");
+    return `<h3>${esc(head.slice(4))}</h3>` + (rest.length ? block(rest.join("\n")) : "");
+  }
+  if (b.startsWith("# ")) return "";
+  const lines = b.split("\n");
+  if (lines.every((l) => /^\s*[-*] /.test(l))) return `<ul class="md">${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*] /, ""))}</li>`).join("")}</ul>`;
+  return `<p>${inline(b)}</p>`;
 }
 function toHtml(body) {
-  return body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean).map((b) =>
-    b.startsWith("## ") ? `<h2>${esc(b.slice(3))}</h2>` : b.startsWith("# ") ? "" : `<p>${inline(b)}</p>`).join("\n");
+  speakerClass = {};
+  const blocks = body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean);
+  // "## 요약" (AI summary) runs until the first timeline heading ("## 00:00").
+  let html = "", inSummary = false;
+  for (const b of blocks) {
+    if (b === "## 요약") { inSummary = true; html += '<div class="summary"><h2>요약</h2>'; continue; }
+    if (inSummary && /^## \d/.test(b)) { inSummary = false; html += "</div>"; }
+    html += block(b) + "\n";
+  }
+  return html + (inSummary ? "</div>" : "");
 }
 
 async function view(id) {
@@ -481,13 +563,18 @@ async function view(id) {
   if (location.hash !== `#job=${id}`) history.replaceState(null, "", `#job=${id}`);
   const [m, body] = splitFrontMatter(r.markdown || "");
   const facts = [METHOD[m.method] || m.method, m.confidence === "observed" ? "사람이 올린 자막" : m.confidence ? "음성 인식 추정" : "",
-                 m.duration && `길이 ${m.duration}`, m.provider].filter(Boolean).map((v) => `<span>${esc(v)}</span>`).join("");
+                 m.duration && `길이 ${m.duration}`, m.speakers && `화자 ${m.speakers}명`, m.provider].filter(Boolean).map((v) => `<span>${esc(v)}</span>`).join("");
   const limits = (m.limitations || []).map((l) => `<li>${esc(l)}</li>`).join("");
+  let segs = null;
+  try { segs = r.segments ? JSON.parse(r.segments) : null; } catch {}
   $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:4px"><h2>전사본</h2>
-      <button class="btn small" id="viewer-md">md 받기</button></div>
+      <div class="actions"><button class="btn small" id="viewer-md">md 받기</button>
+      ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">${k}</button>`).join("") : ""}</div></div>
     <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
+  document.querySelectorAll("[data-export]").forEach((b) => b.onclick = () =>
+    save(r.job.title, `.${b.dataset.export}`, EXPORTS[b.dataset.export](segs), b.dataset.export === "vtt" ? "text/vtt" : "text/plain"));
   if (matchMedia("(max-width: 880px)").matches) $("#viewer").scrollIntoView({behavior: "smooth", block: "start"});
 }
 
@@ -503,7 +590,7 @@ $("#search-form").onsubmit = async (e) => {
   box.innerHTML = hits.length ? "" : '<div class="empty">결과가 없습니다.</div>';
   for (const h of hits) {
     const el = document.createElement("div"); el.className = "hit";
-    const text = h.text.replace(/^\[[^\]]*\]\([^)]*\)\s*|^`[^`]*`\s*/, "");
+    const text = h.text.replace(/^\[[^\]]*\]\([^)]*\)\s*|^`[^`]*`\s*/, "").replace(/^\*\*([^*]+)\*\*\s*/, "$1: ");
     const time = (h.text.match(/^\[([\d:]+)\]|^`([\d:]+)`/) || []).slice(1).find(Boolean) || "";
     el.innerHTML = `<b>${esc(h.title)}</b> <span class="muted">${esc(time)}</span><div>${esc(text.slice(0, 220)).replace(re, (x) => `<mark>${x}</mark>`)}</div>`;
     el.querySelector("b").onclick = () => view(h.id);
