@@ -177,7 +177,6 @@
             <label class="check"><input type="checkbox" id="opt-diarize"> 화자 구분 (누가 말했는지 표시)
               <input class="field tiny" type="number" id="opt-speakers" min="1" max="20" placeholder="몇 명" title="화자 수를 알면 입력 (정확도 향상)"></label>
             <label class="check"><input type="checkbox" id="opt-denoise"> 배경음악 제거 (음악이 큰 영상만, 느려짐)</label>
-            <label class="check" id="opt-summary-wrap" hidden><input type="checkbox" id="opt-summary"> AI 요약·목차 (유료: 영상당 약 100~400원)</label>
           </div>
         </details>
         <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text"></div></div>
@@ -292,7 +291,6 @@ function handleLogin(r, user) {
 
 async function enter() {
   try { const r = await api("me"); me = r.user; canSummarize = !!r.summary; } catch { return; }
-  $("#opt-summary-wrap").hidden = !canSummarize;
   $("#login").hidden = true; $("#app").hidden = false; $("#who").hidden = false;
   $("#who-name").textContent = me.name;
   $("#who-admin").hidden = me.role !== "admin";
@@ -355,7 +353,7 @@ $("#new-form").onsubmit = async (e) => {
   e.preventDefault(); $("#new-error").textContent = "";
   const prompt = $("#prompt").value;
   const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
-                   denoise: $("#opt-denoise").checked, summary: canSummarize && $("#opt-summary").checked};
+                   denoise: $("#opt-denoise").checked};
   $("#submit").disabled = true;
   try {
     if (tab === "url") {
@@ -540,6 +538,7 @@ function block(b) {
     return `<h3>${esc(head.slice(4))}</h3>` + (rest.length ? block(rest.join("\n")) : "");
   }
   if (b.startsWith("# ")) return "";
+  if (/^_[^\n]*_$/.test(b)) return `<p class="muted"><em>${inline(b.slice(1, -1))}</em></p>`;
   const lines = b.split("\n");
   if (lines.every((l) => /^\s*[-*] /.test(l))) return `<ul class="md">${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*] /, ""))}</li>`).join("")}</ul>`;
   return `<p>${inline(b)}</p>`;
@@ -569,11 +568,18 @@ async function view(id) {
   let segs = null;
   try { segs = r.segments ? JSON.parse(r.segments) : null; } catch {}
   $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:4px"><h2>전사본</h2>
-      <div class="actions"><button class="btn small" id="viewer-md">md 받기</button>
+      <div class="actions">${canSummarize ? `<button class="btn small" id="viewer-sum">✨ ${body.includes("\n## 요약\n") ? "요약 다시" : "AI 요약"}</button>` : ""}
+      <button class="btn small" id="viewer-md">md 받기</button>
       ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">${k}</button>`).join("") : ""}</div></div>
     <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
+  if ($("#viewer-sum")) $("#viewer-sum").onclick = async () => {
+    const btn = $("#viewer-sum");
+    btn.disabled = true; btn.textContent = "요약 중… (10~30초)";
+    try { await api("summarize", {id}); await view(id); $("#viewer .summary")?.scrollIntoView({behavior: "smooth", block: "start"}); }
+    catch (err) { alert(err.message); btn.disabled = false; btn.textContent = "✨ AI 요약"; }
+  };
   document.querySelectorAll("[data-export]").forEach((b) => b.onclick = () =>
     save(r.job.title, `.${b.dataset.export}`, EXPORTS[b.dataset.export](segs), b.dataset.export === "vtt" ? "text/vtt" : "text/plain"));
   if (matchMedia("(max-width: 880px)").matches) $("#viewer").scrollIntoView({behavior: "smooth", block: "start"});
