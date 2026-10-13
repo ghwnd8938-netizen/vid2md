@@ -224,6 +224,9 @@
   .user:first-child { border-top: 0; }
   .user .id { display: flex; gap: 10px; align-items: center; min-width: 0; }
   .user .id div { min-width: 0; overflow-wrap: anywhere; }
+  .invite { display: flex; gap: 8px; margin: 4px 0 6px; }
+  .invite .field { flex: 1; min-width: 0; }
+  .avatar.ticket { background: var(--accent-soft); color: var(--accent-deep); font-size: 15px; }
   .hint { font-size: 13px; color: var(--muted); background: var(--softer); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; }
 </style>
 <script src="config.js"></script>
@@ -346,8 +349,13 @@
 <dialog id="users">
   <div class="dlg-head"><b>사용자</b><button class="btn small ghost" id="close-users">닫기</button></div>
   <div class="dlg-body">
-    <div class="hint">처음 온 사람이 로그인을 시도하면 여기에 <b>대기</b>로 나타나고, 텔레그램으로도 알림이 가요.
-      텔레그램 알림의 <b>허용</b> 버튼이나 봇 메뉴(⏳ 승인 대기 · 👥 사용자)로도 처리할 수 있어요.</div>
+    <form class="invite" id="invite-form">
+      <input class="field" id="invite-value" placeholder="@아이디 또는 숫자 ID" autocomplete="off">
+      <button class="btn accent">미리 허용</button>
+    </form>
+    <div class="error" id="invite-error" style="margin-bottom:6px"></div>
+    <div class="hint">미리 허용한 사람은 텔레그램으로 로그인하면 승인 없이 바로 들어와요.
+      그 밖의 사람은 로그인을 시도하면 여기에 <b>대기</b>로 나타나고, 텔레그램 알림의 <b>허용</b> 버튼이나 봇 메뉴로도 처리할 수 있어요.</div>
     <div id="user-list"></div>
   </div>
 </dialog>
@@ -451,9 +459,26 @@ async function countPending() {
     $("#pending-count").hidden = !n; $("#pending-count").textContent = n;
   } catch {}
 }
+$("#invite-form").onsubmit = async (e) => {
+  e.preventDefault(); $("#invite-error").textContent = "";
+  try {
+    const r = await api("invite_add", {value: $("#invite-value").value});
+    $("#invite-value").value = "";
+    await loadUsers(); countPending();
+  } catch (err) { $("#invite-error").textContent = err.message; }
+};
 async function loadUsers() {
-  const users = (await api("users")).users;
+  const {users, invites = []} = await api("users");
   const box = $("#user-list"); box.innerHTML = "";
+  for (const key of invites) {
+    const el = document.createElement("div"); el.className = "user";
+    el.innerHTML = `<div class="id"><span class="avatar ticket">🎟</span><div><b>${esc(key)}</b> <span class="badge accent">미리 허용</span>
+      <div class="muted">아직 로그인하지 않았어요</div></div></div><div class="actions"><button class="btn small ghost">취소</button></div>`;
+    el.querySelector("button").onclick = async () => {
+      try { await api("invite_remove", {key}); loadUsers(); } catch (err) { alert(err.message); }
+    };
+    box.appendChild(el);
+  }
   const order = {pending: 0, allowed: 1, denied: 2};
   users.sort((a, b) => order[a.status] - order[b.status] || a.added - b.added);
   for (const u of users) {
@@ -473,7 +498,7 @@ async function loadUsers() {
     });
     box.appendChild(el);
   }
-  if (!users.length) box.innerHTML = '<div class="empty">사용자가 없습니다.</div>';
+  if (!users.length && !invites.length) box.innerHTML = '<div class="empty">사용자가 없습니다.</div>';
 }
 
 /* ---------- new job ---------- */
