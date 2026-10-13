@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="icon" href="data:,">
+<title>vid2md</title>
+<style>
+  :root {
+    --bg: #f5f5f2; --panel: #ffffff; --sunk: #f0f0ec; --text: #1c1c1a; --muted: #6a6a64; --faint: #9a9a93;
+    --line: #e2e1db; --accent: #2f5d50; --accent-ink: #ffffff; --accent-soft: #e3ede8;
+    --danger: #a23b2a; --danger-soft: #f6e6e2; --warn: #8a6a12; --warn-soft: #f5efdc; --mark: #fff0a8;
+    --tg: #2a8bd1; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151514; --panel: #1e1e1c; --sunk: #191918; --text: #ecebe6; --muted: #a09f98; --faint: #74736d;
+      --line: #33332f; --accent: #7fbfa8; --accent-ink: #10201a; --accent-soft: #22332c;
+      --danger: #e48a78; --danger-soft: #3a2420; --warn: #d9b44a; --warn-soft: #36301c; --mark: #5a4b12;
+      --tg: #5aaee6; --shadow: none; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+  button, input { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  [hidden] { display: none !important; }
+
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--panel);
+    border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  .brand { font-weight: 700; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
+  .brand i { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); display: inline-block; position: relative; }
+  .brand i::after { content: ""; position: absolute; left: 8px; top: 6px; border-left: 8px solid var(--accent-ink);
+    border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .spacer { flex: 1; }
+  .who { color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px;
+    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; line-height: 1.4; }
+  .btn:hover { border-color: var(--faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; justify-content: center; }
+  .btn.small { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .field { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
+  .field:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 64px; display: grid; gap: 16px;
+    grid-template-columns: minmax(0, 390px) minmax(0, 1fr); align-items: start; }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
+  .col { display: grid; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+  .card-head h2 { font-size: 13px; margin: 0; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .stack { display: grid; gap: 10px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .empty { color: var(--faint); font-size: 14px; padding: 12px 0; }
+  .error { color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
+
+  .seg { display: inline-flex; background: var(--sunk); border: 1px solid var(--line); border-radius: 9px; padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 4px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--muted); }
+  .seg button[aria-pressed=true] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }
+
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 22px 12px; text-align: center;
+    color: var(--muted); cursor: pointer; background: var(--sunk); transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop strong { display: block; color: var(--text); margin-top: 4px; overflow-wrap: anywhere; }
+  label.check { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+  .bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+
+  .job { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+  .job:first-child { border-top: 0; padding-top: 4px; }
+  .job.active .title { color: var(--accent); }
+  .job .title { font-weight: 600; overflow-wrap: anywhere; cursor: pointer; }
+  .job .meta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip { font-size: 11px; padding: 1px 8px; border-radius: 99px; font-weight: 600; }
+  .chip.done { color: var(--accent); background: var(--accent-soft); }
+  .chip.failed { color: var(--danger); background: var(--danger-soft); }
+  .chip.running, .chip.queued, .chip.uploading { color: var(--warn); background: var(--warn-soft); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .viewer h1 { font-size: 21px; margin: 0 0 8px; overflow-wrap: anywhere; letter-spacing: -.01em; }
+  .viewer h2 { font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin: 26px 0 8px; }
+  .viewer p { margin: 10px 0; }
+  .viewer code { font-size: 12px; color: var(--muted); }
+  .viewer p > a.t, .viewer p > code:first-child { font-size: 12px; font-variant-numeric: tabular-nums; text-decoration: none;
+    background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; margin-right: 2px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .facts span { font-size: 12px; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; }
+  .limits { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 8px; margin: 0 0 10px; padding: 8px 10px 8px 26px; }
+  .hit { padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .hit b { cursor: pointer; }
+  mark { background: var(--mark); color: inherit; border-radius: 2px; }
+
+  .login-wrap { min-height: calc(100vh - 60px); display: grid; place-items: center; padding: 24px 16px; }
+  .login { width: 100%; max-width: 400px; text-align: center; }
+  .login h1 { font-size: 20px; margin: 4px 0; }
+  #widget { min-height: 48px; margin: 18px 0 6px; display: flex; justify-content: center; }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tg); margin-right: 6px;
+    animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text);
+    width: min(540px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .dlg-body { padding: 8px 16px 16px; }
+  .user { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); gap: 8px; }
+  .user:first-child { border-top: 0; }
+</style>
+<script src="config.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand"><i></i>vid2md</div>
+  <span class="muted">영상을 글로</span>
+  <div class="spacer"></div>
+  <div class="who" id="who" hidden>
+    <span id="who-name"></span><span class="badge" id="who-admin" hidden>관리자</span>
+    <button class="btn small" id="open-users" hidden>사용자 <span class="badge warn" id="pending-count" hidden></span></button>
+    <button class="btn small ghost" id="logout">로그아웃</button>
+  </div>
+</header>
+
+<div class="login-wrap" id="login" hidden>
+  <section class="card login">
+    <h1>로그인</h1>
+    <p class="muted" style="margin:0">허용된 텔레그램 계정만 들어올 수 있습니다.</p>
+    <div id="login-idle">
+      <div id="widget"></div>
+      <p class="muted" style="margin:0">버튼을 누르고 텔레그램에서 <b>확인</b>하면 로그인됩니다.</p>
+    </div>
+    <div id="login-wait" hidden style="margin-top:18px">
+      <div style="font-size:17px;font-weight:700;margin-bottom:4px"><span class="pulse"></span>관리자 승인 대기 중</div>
+      <p class="muted"><b id="wait-name"></b> 님의 요청을 관리자에게 보냈습니다.<br>허용되면 이 화면이 자동으로 로그인됩니다.</p>
+      <button class="btn small ghost" id="wait-cancel">다른 계정으로</button>
+    </div>
+    <div class="error" id="login-error" style="margin-top:10px"></div>
+  </section>
+</div>
+
+<main id="app" hidden>
+  <div class="col">
+    <section class="card">
+      <div class="card-head"><h2>새로 만들기</h2>
+        <div class="seg" role="group">
+          <button aria-pressed="true" data-tab="file">파일</button><button aria-pressed="false" data-tab="url">YouTube</button>
+        </div>
+      </div>
+      <form id="new-form" class="stack">
+        <div data-pane="file">
+          <div class="drop" id="drop">영상·음성·자막 파일을 끌어다 놓거나 눌러서 고르세요<strong id="picked"></strong></div>
+          <input type="file" id="file" hidden
+                 accept=".mp4,.mkv,.mov,.avi,.webm,.m4v,.wmv,.mp3,.m4a,.wav,.flac,.ogg,.opus,.aac,.wma,.srt,.vtt">
+        </div>
+        <div data-pane="url" hidden>
+          <input class="field" type="text" id="url" placeholder="https://www.youtube.com/watch?v=...">
+        </div>
+        <input class="field" type="text" id="prompt" placeholder="자주 나오는 용어 (선택) 예: MCP, Claude Code, API">
+        <label class="check" id="force-wrap" hidden><input type="checkbox" id="force"> 자막이 있어도 음성 인식</label>
+        <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text"></div></div>
+        <button class="btn primary" id="submit">변환 시작</button>
+        <div class="error" id="new-error"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>작업</h2>
+        <div class="seg" role="group">
+          <button aria-pressed="true" data-filter="all">전체</button><button aria-pressed="false" data-filter="active">진행</button><button aria-pressed="false" data-filter="done">완료</button><button aria-pressed="false" data-filter="failed">실패</button>
+        </div>
+      </div>
+      <div id="jobs"><div class="empty">불러오는 중…</div></div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <form id="search-form"><input class="field" type="search" id="q" placeholder="모든 전사본에서 검색 (Enter)"></form>
+      <div id="hits"></div>
+    </section>
+    <section class="card viewer" id="viewer">
+      <div class="empty">완료된 작업을 고르면 여기에 내용이 나옵니다.</div>
+    </section>
+  </div>
+</main>
+
+<dialog id="users">
+  <div class="dlg-head"><b>사용자</b><button class="btn small ghost" id="close-users">닫기</button></div>
+  <div class="dlg-body">
+    <p class="muted">처음 온 사람은 텔레그램으로 로그인을 시도하면 여기에 <b>대기</b>로 나타나고, 관리자 텔레그램으로 알림이 갑니다.</p>
+    <div id="user-list"></div>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+const CFG = window.VID2MD_CONFIG || {};
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const STATUS = {uploading: "올리는 중", queued: "대기", running: "처리 중", done: "완료", failed: "실패"};
+const METHOD = {"captions-manual": "업로드된 자막", "captions-auto": "자동 자막", "subtitle-file": "자막 파일", whisper: "음성 인식"};
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+let token = store.get("vid2md.token"), me = null, jobs = [], filter = "all", tab = "file", picked = null;
+let pollTimer = null, waitTimer = null, openId = null;
+
+/* ---------- API (Apps Script: JSON as text/plain avoids a CORS preflight) ---------- */
+async function api(action, params = {}) {
+  let res;
+  try {
+    res = await fetch(CFG.api, {method: "POST", headers: {"content-type": "text/plain;charset=utf-8"},
+                                 body: JSON.stringify({action, token, ...params})});
+  } catch { throw new Error("서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요."); }
+  const data = await res.json().catch(() => ({ok: false, error: `응답 오류 (${res.status})`}));
+  if (!data.ok) {
+    if (data.code === "login" && action !== "login") signOut();
+    throw Object.assign(new Error(data.error || "요청 실패"), {code: data.code});
+  }
+  return data;
+}
+
+/* ---------- login ---------- */
+function showLogin() {
+  clearTimeout(pollTimer);
+  $("#app").hidden = true; $("#who").hidden = true; $("#login").hidden = false;
+  $("#login-idle").hidden = false; $("#login-wait").hidden = true;
+  if (!$("#widget").childElementCount) {
+    const s = document.createElement("script");
+    s.async = true;
+    s.src = "https://telegram.org/js/telegram-widget.js?22";
+    Object.assign(s.dataset, {telegramLogin: CFG.bot, size: "large", radius: "8", lang: "ko",
+                              requestAccess: "write", onauth: "onTelegramAuth(user)"});
+    $("#widget").appendChild(s);
+  }
+}
+function signOut() { token = null; store.set("vid2md.token", null); me = null; showLogin(); }
+$("#logout").onclick = signOut;
+$("#wait-cancel").onclick = () => { clearTimeout(waitTimer); store.set("vid2md.pending", null); showLogin(); };
+
+window.onTelegramAuth = async (user) => {
+  $("#login-error").textContent = "";
+  const claim = new URLSearchParams(location.search).get("claim") || undefined;
+  try {
+    const r = await api("login", {telegram: user, claim});
+    if (claim) history.replaceState(null, "", location.pathname + location.hash);
+    handleLogin(r, user);
+  } catch (err) { $("#login-error").textContent = err.message; }
+};
+
+function handleLogin(r, user) {
+  if (r.status === "approved") {
+    token = r.token; store.set("vid2md.token", token); store.set("vid2md.pending", null);
+    return enter();
+  }
+  if (r.status === "denied") { $("#login-error").textContent = "관리자가 접근을 허용하지 않았습니다."; return; }
+  // waiting: keep the signed Telegram data (valid for a day) and retry until the admin decides
+  store.set("vid2md.pending", JSON.stringify(user));
+  $("#login-idle").hidden = true; $("#login-wait").hidden = false;
+  $("#wait-name").textContent = r.user?.name || "";
+  clearTimeout(waitTimer);
+  waitTimer = setTimeout(async () => {
+    try { handleLogin(await api("login", {telegram: user}), user); }
+    catch (err) { $("#login-error").textContent = err.message; showLogin(); }
+  }, 10000);
+}
+
+async function enter() {
+  try { me = (await api("me")).user; } catch { return; }
+  $("#login").hidden = true; $("#app").hidden = false; $("#who").hidden = false;
+  $("#who-name").textContent = me.name;
+  $("#who-admin").hidden = me.role !== "admin";
+  $("#open-users").hidden = me.role !== "admin";
+  refresh();
+  if (me.role === "admin") countPending();
+  const m = location.hash.match(/job=([\w-]+)/);
+  if (m) view(m[1]);
+}
+
+/* ---------- users (admin) ---------- */
+$("#open-users").onclick = async () => { await loadUsers(); $("#users").showModal(); };
+$("#close-users").onclick = () => $("#users").close();
+async function countPending() {
+  try {
+    const n = (await api("users")).users.filter((u) => u.status === "pending").length;
+    $("#pending-count").hidden = !n; $("#pending-count").textContent = n;
+  } catch {}
+}
+async function loadUsers() {
+  const users = (await api("users")).users;
+  const box = $("#user-list"); box.innerHTML = "";
+  const order = {pending: 0, allowed: 1, denied: 2};
+  users.sort((a, b) => order[a.status] - order[b.status] || a.added - b.added);
+  for (const u of users) {
+    const el = document.createElement("div"); el.className = "user";
+    const tag = u.role === "admin" ? '<span class="badge">관리자</span>' :
+      u.status === "pending" ? '<span class="badge warn">대기</span>' : u.status === "denied" ? '<span class="badge warn">거절됨</span>' : "";
+    const buttons = u.role === "admin" ? "" : u.status === "allowed"
+      ? '<button class="btn small" data-d="remove">접근 해제</button>'
+      : '<button class="btn small primary" data-d="allow">허용</button>' + (u.status === "pending" ? '<button class="btn small ghost" data-d="deny">거절</button>' : "");
+    el.innerHTML = `<div><b>${esc(u.name)}</b> ${u.username ? `<span class="muted">@${esc(u.username)}</span>` : ""} ${tag}
+      <div class="muted">id ${esc(u.id)} · ${new Date(u.added * 1000).toLocaleDateString("ko-KR")}</div></div><div class="actions">${buttons}</div>`;
+    el.querySelectorAll("[data-d]").forEach((b) => b.onclick = async () => {
+      if (b.dataset.d === "remove" && !confirm(`${u.name} 님의 접근을 해제할까요? 바로 로그아웃됩니다.`)) return;
+      try { await api("decide_user", {id: u.id, decision: b.dataset.d}); loadUsers(); countPending(); }
+      catch (err) { alert(err.message); }
+    });
+    box.appendChild(el);
+  }
+  if (!users.length) box.innerHTML = '<div class="empty">사용자가 없습니다.</div>';
+}
+
+/* ---------- new job ---------- */
+document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  document.querySelectorAll("[data-pane]").forEach((p) => p.hidden = p.dataset.pane !== tab);
+  $("#force-wrap").hidden = tab !== "url";
+});
+const drop = $("#drop");
+drop.onclick = () => $("#file").click();
+$("#file").onchange = () => pick($("#file").files[0]);
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); };
+function pick(file) { picked = file || null; $("#picked").textContent = picked ? `${picked.name} · ${(picked.size / 1048576).toFixed(1)}MB` : ""; }
+
+$("#new-form").onsubmit = async (e) => {
+  e.preventDefault(); $("#new-error").textContent = "";
+  const prompt = $("#prompt").value;
+  $("#submit").disabled = true;
+  try {
+    if (tab === "url") {
+      await api("add_link", {url: $("#url").value, prompt, force_whisper: $("#force").checked});
+      $("#url").value = "";
+    } else {
+      if (!picked) throw new Error("파일을 고르세요.");
+      await upload(picked, prompt); pick(null); $("#file").value = "";
+    }
+    refresh();
+  } catch (err) { $("#new-error").textContent = err.message; }
+  finally { $("#submit").disabled = false; $("#upload-state").hidden = true; }
+};
+
+function readBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",", 2)[1] || "");
+    r.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
+    r.readAsDataURL(blob);
+  });
+}
+
+async function upload(file, prompt) {
+  const start = await api("upload_start", {name: file.name, size: file.size, prompt});
+  const size = start.chunk_bytes, total = start.chunks;
+  let next = 0, done = 0;
+  const show = () => {
+    $("#upload-state").hidden = false;
+    $("#upload-state .bar i").style.width = `${done / total * 100}%`;
+    $("#upload-text").textContent = `올리는 중 ${done}/${total} (${Math.min(done * size, file.size) / 1048576 | 0}MB / ${file.size / 1048576 | 0}MB)`;
+  };
+  show();
+  // Three pieces at a time; each retried up to 3 times.
+  const lane = async () => {
+    while (next < total) {
+      const index = next++;
+      const data = await readBase64(file.slice(index * size, (index + 1) * size));
+      for (let attempt = 1; ; attempt++) {
+        try { await api("upload_chunk", {id: start.id, index, data}); break; }
+        catch (err) { if (attempt >= 3 || err.code === "login") throw err; await new Promise((r) => setTimeout(r, 2000 * attempt)); }
+      }
+      done++; show();
+    }
+  };
+  await Promise.all([lane(), lane(), lane()]);
+  await api("upload_finish", {id: start.id});
+}
+
+/* ---------- jobs ---------- */
+document.querySelectorAll("[data-filter]").forEach((b) => b.onclick = () => {
+  filter = b.dataset.filter;
+  document.querySelectorAll("[data-filter]").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  renderJobs();
+});
+
+async function refresh() {
+  clearTimeout(pollTimer);
+  try { jobs = (await api("jobs")).jobs; } catch { return; }
+  renderJobs();
+  if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) pollTimer = setTimeout(refresh, 8000);
+}
+
+function renderJobs() {
+  const match = {all: () => true, active: (j) => ["queued", "running", "uploading"].includes(j.status),
+                 done: (j) => j.status === "done", failed: (j) => j.status === "failed"}[filter];
+  const list = jobs.filter(match), box = $("#jobs");
+  box.innerHTML = list.length ? "" : `<div class="empty">${jobs.length ? "해당하는 작업이 없습니다." : "아직 작업이 없습니다."}</div>`;
+  for (const job of list) {
+    const el = document.createElement("div"); el.className = "job" + (job.id === openId ? " active" : "");
+    const pct = Math.round((job.progress || 0) * 100);
+    el.innerHTML = `
+      <div class="title">${esc(job.title)}</div>
+      <div class="meta"><span class="chip ${esc(job.status)}">${STATUS[job.status] || esc(job.status)}</span>
+        ${job.method ? `<span>${esc(METHOD[job.method] || job.method)}</span>` : ""}
+        ${job.status === "running" ? `<span>${esc(job.stage)}${pct ? ` ${pct}%` : ""}</span>` : ""}
+        ${job.status === "queued" && job.stage ? `<span>${esc(job.stage)}</span>` : ""}
+        <span>${new Date(job.created * 1000).toLocaleString("ko-KR", {dateStyle: "short", timeStyle: "short"})}</span></div>
+      ${job.status === "running" ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}
+      ${job.error ? `<div class="error">${esc(job.error)}</div>` : ""}
+      <div class="actions">
+        ${job.status === "done" ? `<button class="btn small" data-act="view">보기</button><button class="btn small" data-act="md">md 받기</button>` : ""}
+        ${job.status === "failed" ? `<button class="btn small" data-act="retry">다시 시도</button>` : ""}
+        ${job.status !== "running" ? `<button class="btn small ghost" data-act="delete">삭제</button>` : ""}
+      </div>`;
+    el.querySelector(".title").onclick = () => job.status === "done" && view(job.id);
+    el.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => act(job, b.dataset.act));
+    box.appendChild(el);
+  }
+}
+
+async function act(job, action) {
+  try {
+    if (action === "view") return view(job.id);
+    if (action === "md") return downloadMd(job.id);
+    if (action === "retry") await api("retry", {id: job.id});
+    if (action === "delete") {
+      if (!confirm(`"${job.title}"을(를) 삭제할까요? 전사본도 지워집니다.`)) return;
+      await api("delete_job", {id: job.id});
+      if (openId === job.id) { openId = null; $("#viewer").innerHTML = '<div class="empty">삭제했습니다.</div>'; }
+    }
+    refresh();
+  } catch (err) { alert(err.message); }
+}
+
+async function downloadMd(id) {
+  const r = await api("job", {id});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([r.markdown], {type: "text/markdown;charset=utf-8"}));
+  a.download = `${r.job.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, " ").trim() || "transcript"}.md`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- Markdown written by vid2md -> HTML (escaped) ---------- */
+function splitFrontMatter(text) {
+  const meta = {};
+  if (!text.startsWith("---\n")) return [meta, text];
+  const end = text.indexOf("\n---\n", 4);
+  if (end < 0) return [meta, text];
+  let key = null;
+  for (const line of text.slice(4, end).split("\n")) {
+    if (line.startsWith("  - ") && key) (meta[key] = meta[key] || []).push(scalar(line.slice(4)));
+    else if (line.includes(":")) {
+      const i = line.indexOf(":"); key = line.slice(0, i).trim();
+      const v = line.slice(i + 1).trim(); if (v) meta[key] = scalar(v);
+    }
+  }
+  return [meta, text.slice(end + 5)];
+}
+function scalar(v) { if (v.startsWith('"')) { try { return JSON.parse(v); } catch {} } return v; }
+function inline(text) {
+  return esc(text)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (m, label, url) => `<a class="t" href="${url}" target="_blank" rel="noopener">${label}</a>`)
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+function toHtml(body) {
+  return body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean).map((b) =>
+    b.startsWith("## ") ? `<h2>${esc(b.slice(3))}</h2>` : b.startsWith("# ") ? "" : `<p>${inline(b)}</p>`).join("\n");
+}
+
+async function view(id) {
+  let r;
+  try { r = await api("job", {id}); } catch (err) { alert(err.message); return; }
+  openId = id; renderJobs();
+  if (location.hash !== `#job=${id}`) history.replaceState(null, "", `#job=${id}`);
+  const [m, body] = splitFrontMatter(r.markdown || "");
+  const facts = [METHOD[m.method] || m.method, m.confidence === "observed" ? "사람이 올린 자막" : m.confidence ? "음성 인식 추정" : "",
+                 m.duration && `길이 ${m.duration}`, m.provider].filter(Boolean).map((v) => `<span>${esc(v)}</span>`).join("");
+  const limits = (m.limitations || []).map((l) => `<li>${esc(l)}</li>`).join("");
+  $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:4px"><h2>전사본</h2>
+      <button class="btn small" id="viewer-md">md 받기</button></div>
+    <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
+    ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
+  $("#viewer-md").onclick = () => downloadMd(id);
+  if (matchMedia("(max-width: 880px)").matches) $("#viewer").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+/* ---------- search ---------- */
+$("#search-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const q = $("#q").value.trim(), box = $("#hits");
+  if (!q) { box.innerHTML = ""; return; }
+  box.innerHTML = '<div class="empty">찾는 중…</div>';
+  let hits;
+  try { hits = (await api("search", {q})).hits; } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  const re = new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  box.innerHTML = hits.length ? "" : '<div class="empty">결과가 없습니다.</div>';
+  for (const h of hits) {
+    const el = document.createElement("div"); el.className = "hit";
+    const text = h.text.replace(/^\[[^\]]*\]\([^)]*\)\s*|^`[^`]*`\s*/, "");
+    const time = (h.text.match(/^\[([\d:]+)\]|^`([\d:]+)`/) || []).slice(1).find(Boolean) || "";
+    el.innerHTML = `<b>${esc(h.title)}</b> <span class="muted">${esc(time)}</span><div>${esc(text.slice(0, 220)).replace(re, (x) => `<mark>${x}</mark>`)}</div>`;
+    el.querySelector("b").onclick = () => view(h.id);
+    box.appendChild(el);
+  }
+};
+
+/* ---------- start ---------- */
+if (!CFG.api || CFG.api.includes("PASTE_")) {
+  document.body.innerHTML = '<p style="padding:24px">config.js에 Apps Script 주소와 봇 이름을 넣어 주세요 (deploy/GOOGLE.md).</p>';
+} else if (token) {
+  enter().then(() => { if (!me) showLogin(); });
+} else {
+  const pending = store.get("vid2md.pending");
+  showLogin();
+  if (pending) { try { const u = JSON.parse(pending); api("login", {telegram: u}).then((r) => handleLogin(r, u)).catch(() => store.set("vid2md.pending", null)); } catch {} }
+}
+</script>
+</body>
+</html>
