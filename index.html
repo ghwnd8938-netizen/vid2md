@@ -405,8 +405,8 @@
       </form>
       <details class="bulk" id="dict-bulk">
         <summary>여러 개 한 번에 붙여넣기</summary>
-        <textarea class="field" id="dict-text" placeholder="## 뉴스·정치&#10;더불어민주당&#10;이 재명 → 이재명&#10;&#10;## 한국 여행 블로그&#10;Gwangjang Market&#10;광장 마켓, 광장마켓 → Gwangjang Market"></textarea>
-        <div class="muted">한 줄에 하나씩. <b>## 이름</b>은 묶음, <b>틀린 말 → 바른 말</b>은 고쳐쓰기, 단어만 쓰면 힌트 용어예요.</div>
+        <textarea class="field" id="dict-text" placeholder="## 묶음 이름&#10;용어&#10;틀린 말 → 바른 말&#10;&#10;## 나만 볼 묶음 (비공개)&#10;용어"></textarea>
+        <div class="muted">한 줄에 하나씩. <b>## 이름</b>은 묶음(<b>## 이름 (비공개)</b>면 나만 보는 묶음), <b>틀린 말 → 바른 말</b>은 고쳐쓰기, 단어만 쓰면 힌트 용어예요.</div>
         <div class="actions"><button class="btn small accent" id="dict-import" type="button">넣기</button></div>
       </details>
       <div class="error" id="dict-error" style="margin-bottom:6px"></div>
@@ -568,16 +568,18 @@ async function openDict(prefill = "") {
   await loadDict();
   if (prefill) $("#dict-right").focus();
 }
-let dictTab = "", dictGroups = [];
+let dictTab = "", dictGroups = [], privateGroups = [], newPrivate = {};
+const packLabel = (g) => (privateGroups.includes(g) ? `🔒 ${g}` : g);
 async function loadDict() {
   let r;
   try { r = await api("dictionary"); } catch (err) { $("#dict-list").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
   $("#dict-edit").hidden = !r.can_edit;
   dictGroups = r.groups || [];
+  privateGroups = r.private_groups || [];
   fillGroups(dictGroups);
   if (dictTab && dictTab !== "*" && !dictGroups.includes(dictTab)) dictTab = "";
   // tabs: 전체 · 공통 · each pack
-  const tabs = [["*", "전체"], ["", "공통"], ...dictGroups.map((g) => [g, g])];
+  const tabs = [["*", "전체"], ["", "공통"], ...dictGroups.map((g) => [g, packLabel(g)])];
   $("#dict-tabs").innerHTML = tabs.map(([k, label]) => `<button type="button" data-tab="${esc(k)}" aria-pressed="${k === (dictTab || "")}">${esc(label)}</button>`).join("");
   $("#dict-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => { dictTab = b.dataset.tab; loadDict(); });
   const rows = r.rules.filter((x) => dictTab === "*" || x.group === (dictTab || ""));
@@ -601,7 +603,15 @@ async function loadDict() {
   }
   box.querySelectorAll("[data-id]").forEach((b) => b.onclick = remove(b.dataset.id));
   if (dictTab && dictTab !== "*" && r.can_edit) {
-    const del = document.createElement("div"); del.style.margin = "10px 0 2px";
+    const lock = document.createElement("label"); lock.className = "toggle"; lock.style.marginTop = "8px";
+    lock.innerHTML = `<input type="checkbox" ${privateGroups.includes(dictTab) ? "checked" : ""}>
+      <span class="t">🔒 비공개 묶음<small>켜면 나(관리자)만 보고 고를 수 있어요. 친구들 화면에는 묶음도 단어도 안 보여요.</small></span>`;
+    lock.querySelector("input").onchange = async (e) => {
+      try { await api("dict_group_private", {group: dictTab, private: e.target.checked}); loadDict(); }
+      catch (err) { alert(err.message); }
+    };
+    box.appendChild(lock);
+    const del = document.createElement("div"); del.style.margin = "6px 0 2px";
     del.innerHTML = `<button class="btn small ghost" type="button">'${esc(dictTab)}' 묶음 통째로 지우기</button>`;
     del.querySelector("button").onclick = async () => {
       if (!confirm(`'${dictTab}' 묶음의 용어를 모두 지울까요?`)) return;
@@ -615,26 +625,27 @@ async function loadDict() {
 }
 function fillGroups(groups) {
   const keep = $("#dict-group").value;
-  $("#dict-group").innerHTML = `<option value="">공통 (모든 영상)</option>` + groups.map((g) => `<option>${esc(g)}</option>`).join("")
+  $("#dict-group").innerHTML = `<option value="">공통 (모든 영상)</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}</option>`).join("")
     + `<option value="__new">+ 새 묶음 만들기…</option>`;
   $("#dict-group").value = groups.includes(dictTab) ? dictTab : (groups.includes(keep) ? keep : "");
   const pick = $("#glossary"), chosen = pick.value;
-  pick.innerHTML = `<option value="">용어 묶음 없음</option>` + groups.map((g) => `<option>${esc(g)}</option>`).join("");
+  pick.innerHTML = `<option value="">용어 묶음 없음</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}</option>`).join("");
   pick.value = groups.includes(chosen) ? chosen : "";
   pick.hidden = !groups.length;
 }
 $("#dict-group").onchange = () => {
   if ($("#dict-group").value !== "__new") return;
-  const name = (prompt("새 묶음 이름 (예: 뉴스·정치)") || "").trim();
+  const name = (prompt("새 묶음 이름 (예: 강의, 회의)") || "").trim();
   if (!name) { $("#dict-group").value = ""; return; }
-  const opt = document.createElement("option"); opt.textContent = name;
+  if (confirm("나만 보는 비공개 묶음으로 만들까요?\n(확인: 비공개 · 취소: 친구들도 볼 수 있는 묶음)")) newPrivate[name] = true;
+  const opt = document.createElement("option"); opt.value = name; opt.textContent = newPrivate[name] ? `🔒 ${name}` : name;
   $("#dict-group").insertBefore(opt, $("#dict-group").lastElementChild); $("#dict-group").value = name;
 };
 $("#dict-form").onsubmit = async (e) => {
   e.preventDefault(); $("#dict-error").textContent = "";
   const group = $("#dict-group").value === "__new" ? "" : $("#dict-group").value;
   try {
-    const r = await api("dict_add", {wrong: $("#dict-wrong").value, right: $("#dict-right").value, group});
+    const r = await api("dict_add", {wrong: $("#dict-wrong").value, right: $("#dict-right").value, group, private: !!newPrivate[group]});
     $("#dict-wrong").value = ""; $("#dict-right").value = "";
     $("#dict-status").textContent = r.added ? `${r.added}개 추가했어요.` : "이미 있는 말이에요.";
     if (group) dictTab = group;
@@ -651,7 +662,7 @@ $("#dict-import").onclick = async () => {
   } catch (err) { $("#dict-error").textContent = err.message; }
 };
 async function loadGroups() {
-  try { fillGroups((await api("dictionary")).groups || []); } catch {}
+  try { const r = await api("dictionary"); privateGroups = r.private_groups || []; fillGroups(r.groups || []); } catch {}
 }
 $("#dict-starter").onclick = async () => {
   try { const r = await api("dict_starter"); $("#dict-status").textContent = `기본 목록에서 ${r.added}개 넣었어요.`; loadDict(); }
@@ -848,7 +859,7 @@ function renderJobs() {
 
 function optionTags(o) {
   o = o || {};
-  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.glossary && `📖 ${o.glossary}`]
+  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.glossary && `📖 ${packLabel(o.glossary)}`]
     .filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join(" ");
 }
 
