@@ -4,189 +4,325 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<link rel="icon" href="data:,">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23ff5a36'/%3E%3Cpath d='M12 9.5v13l10-6.5z' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <title>vid2md</title>
 <style>
   :root {
-    --bg: #f5f5f2; --panel: #ffffff; --sunk: #f0f0ec; --text: #1c1c1a; --muted: #6a6a64; --faint: #9a9a93;
-    --line: #e2e1db; --accent: #2f5d50; --accent-ink: #ffffff; --accent-soft: #e3ede8;
-    --danger: #a23b2a; --danger-soft: #f6e6e2; --warn: #8a6a12; --warn-soft: #f5efdc; --mark: #fff0a8;
-    --tg: #2a8bd1; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #151514; --panel: #1e1e1c; --sunk: #191918; --text: #ecebe6; --muted: #a09f98; --faint: #74736d;
-      --line: #33332f; --accent: #7fbfa8; --accent-ink: #10201a; --accent-soft: #22332c;
-      --danger: #e48a78; --danger-soft: #3a2420; --warn: #d9b44a; --warn-soft: #36301c; --mark: #5a4b12;
-      --tg: #5aaee6; --shadow: none; }
+    color-scheme: light;
+    --bg: #ffffff; --soft: #f6f6f4; --softer: #fafaf9; --ink: #141413; --text: #2b2b29; --muted: #75746f; --faint: #a9a8a2;
+    --line: #ecebe7; --line-strong: #dddcd6;
+    --accent: #ff5a36; --accent-ink: #ffffff; --accent-soft: #fff0eb; --accent-deep: #e8431f;
+    --ok: #12825b; --ok-soft: #e6f5ee; --warn: #a76a00; --warn-soft: #fff5de; --bad: #c8321f; --bad-soft: #fdecea;
+    --mark: #ffe7a3; --tg: #2aabee;
+    --r: 16px; --shadow: 0 1px 2px rgba(20,20,19,.04), 0 8px 24px -12px rgba(20,20,19,.10);
+    --font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
-  body { background: var(--bg); color: var(--text);
-    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
-  button, input { font: inherit; color: inherit; }
-  a { color: var(--accent); }
+  body { background: var(--bg); color: var(--text); font: 15px/1.6 var(--font); -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em; }
+  button, input { font: inherit; color: inherit; letter-spacing: inherit; }
+  a { color: var(--accent-deep); }
   [hidden] { display: none !important; }
+  svg { display: block; }
 
-  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--panel);
-    border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
-  .brand { font-weight: 700; letter-spacing: -.02em; display: flex; align-items: center; gap: 8px; }
-  .brand i { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); display: inline-block; position: relative; }
-  .brand i::after { content: ""; position: absolute; left: 8px; top: 6px; border-left: 8px solid var(--accent-ink);
-    border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
-  .spacer { flex: 1; }
-  .who { color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; }
-  .badge { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
-  .badge.warn { background: var(--warn-soft); color: var(--warn); }
-
-  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 12px;
-    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; line-height: 1.4; }
-  .btn:hover { border-color: var(--faint); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; justify-content: center; }
-  .btn.small { font-size: 12px; padding: 3px 9px; border-radius: 7px; }
+  /* ---------- shared bits ---------- */
+  .logo { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; font-size: 18px; color: var(--ink); letter-spacing: -0.03em; }
+  .logo-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center;
+    box-shadow: 0 6px 14px -6px rgba(255,90,54,.7); }
+  .logo-mark svg { width: 14px; height: 14px; margin-left: 2px; }
+  .btn { border: 1px solid var(--line-strong); background: var(--bg); border-radius: 11px; padding: 8px 14px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.3; font-weight: 600; font-size: 14px;
+    color: var(--ink); text-decoration: none; transition: background .15s, border-color .15s, transform .1s, box-shadow .15s; }
+  .btn:hover { background: var(--soft); }
+  .btn:active { transform: scale(.98); }
+  .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; padding: 13px 18px; font-size: 15px; border-radius: 13px; }
+  .btn.primary:hover { background: #000; box-shadow: 0 8px 20px -10px rgba(0,0,0,.5); }
+  .btn.accent { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.accent:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+  .btn.small { font-size: 13px; padding: 6px 11px; border-radius: 9px; }
   .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
-  .btn:disabled { opacity: .5; cursor: default; }
-  .field { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunk); }
-  .field:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 64px; display: grid; gap: 16px;
-    grid-template-columns: minmax(0, 390px) minmax(0, 1fr); align-items: start; }
-  @media (max-width: 880px) { main { grid-template-columns: 1fr; } header { padding: 10px 16px; } }
-  .col { display: grid; gap: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
-  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
-  .card-head h2 { font-size: 13px; margin: 0; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
-  .stack { display: grid; gap: 10px; }
+  .btn.ghost:hover { background: var(--soft); color: var(--ink); }
+  .btn:disabled { opacity: .45; cursor: default; transform: none; }
+  .btn:focus-visible, .field:focus { outline: none; box-shadow: 0 0 0 3px rgba(255,90,54,.22); border-color: var(--accent); }
+  .field { width: 100%; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg);
+    transition: border-color .15s, box-shadow .15s; }
+  .field::placeholder { color: var(--faint); }
   .muted { color: var(--muted); font-size: 13px; }
-  .empty { color: var(--faint); font-size: 14px; padding: 12px 0; }
-  .error { color: var(--danger); font-size: 13px; overflow-wrap: anywhere; }
+  .error { color: var(--bad); font-size: 13px; overflow-wrap: anywhere; }
+  .error:empty { display: none; }
+  .badge { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--soft); color: var(--muted);
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .badge.accent { background: var(--accent-soft); color: var(--accent-deep); }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+    color: #fff; background: linear-gradient(135deg, #ff8a5b, #ff5a36); flex: none; }
 
-  .seg { display: inline-flex; background: var(--sunk); border: 1px solid var(--line); border-radius: 9px; padding: 2px; gap: 2px; }
-  .seg button { border: 0; background: transparent; padding: 4px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--muted); }
-  .seg button[aria-pressed=true] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }
+  /* ---------- login ---------- */
+  .login-page { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; position: relative; overflow: hidden; }
+  .login-page::before { content: ""; position: absolute; inset: -20% -10% auto auto; width: 70vmax; height: 70vmax; z-index: -1;
+    background: radial-gradient(closest-side, rgba(255,90,54,.16), rgba(255,90,54,0)); }
+  .login-page::after { content: ""; position: absolute; inset: auto auto -30% -20%; width: 60vmax; height: 60vmax; z-index: -1;
+    background: radial-gradient(closest-side, rgba(255,184,107,.18), rgba(255,184,107,0)); }
+  .login-top { padding: 22px 28px; }
+  .login-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center;
+    max-width: 1080px; width: 100%; margin: 0 auto; padding: 24px 28px 48px; }
+  .hero h1 { font-size: clamp(34px, 5.4vw, 56px); line-height: 1.12; letter-spacing: -0.045em; margin: 0 0 18px; color: var(--ink); font-weight: 800; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p.lead { font-size: 17px; color: var(--muted); margin: 0 0 28px; max-width: 30em; }
+  .signin { background: rgba(255,255,255,.86); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 20px;
+    padding: 22px; box-shadow: var(--shadow); max-width: 420px; }
+  .signin-label { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+  #widget { min-height: 44px; margin: 14px 0 12px; display: flex; }
+  .signin .note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted); }
+  .signin .note svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--faint); }
+  .features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .features span { font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px; }
+  .wait { text-align: center; padding: 8px 4px 2px; }
+  .ring { width: 76px; height: 76px; margin: 6px auto 16px; position: relative; display: grid; place-items: center; }
+  .ring .avatar { width: 56px; height: 56px; font-size: 22px; }
+  .ring::before, .ring::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent);
+    opacity: 0; animation: ping 2.4s cubic-bezier(.2,.6,.3,1) infinite; }
+  .ring::after { animation-delay: 1.2s; }
+  @keyframes ping { 0% { transform: scale(.75); opacity: .55; } 100% { transform: scale(1.35); opacity: 0; } }
+  .wait h2 { font-size: 20px; margin: 0 0 6px; color: var(--ink); letter-spacing: -0.03em; }
+  .wait p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .preview { background: var(--bg); border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 30px 60px -30px rgba(20,20,19,.25);
+    padding: 20px 22px; transform: rotate(1.2deg); }
+  .preview .bar-top { display: flex; gap: 6px; margin-bottom: 16px; }
+  .preview .bar-top i { width: 10px; height: 10px; border-radius: 50%; background: var(--line-strong); }
+  .preview h3 { margin: 0 0 6px; font-size: 18px; color: var(--ink); letter-spacing: -0.03em; }
+  .preview .facts { margin-bottom: 14px; }
+  .preview p { margin: 10px 0; font-size: 14px; }
+  .login-foot { text-align: center; padding: 16px; font-size: 12px; color: var(--faint); }
+  @media (max-width: 860px) {
+    .login-main { grid-template-columns: 1fr; gap: 28px; padding-top: 8px; }
+    .preview { display: none; }
+    .login-top { padding: 18px 20px; }
+    .signin { max-width: none; }
+  }
 
-  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 22px 12px; text-align: center;
-    color: var(--muted); cursor: pointer; background: var(--sunk); transition: border-color .15s, background .15s; }
+  /* ---------- app ---------- */
+  header.top { position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.88); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line); }
+  .top-in { max-width: 1240px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 12px; }
+  .spacer { flex: 1; }
+  .who { display: flex; gap: 8px; align-items: center; }
+  .who-name { font-weight: 600; font-size: 14px; color: var(--ink); }
+  .dot-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
+  main.app { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; display: grid; gap: 24px;
+    grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: start; }
+  .col { display: grid; gap: 20px; align-content: start; }
+  .card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+  .card-head h2 { font-size: 17px; margin: 0; color: var(--ink); font-weight: 700; letter-spacing: -0.03em; }
+  .stack { display: grid; gap: 12px; }
+  .empty { color: var(--faint); font-size: 14px; padding: 18px 0; text-align: center; }
+  @media (max-width: 920px) {
+    main.app { grid-template-columns: 1fr; padding: 18px 16px 64px; gap: 16px; }
+    .top-in { padding: 10px 16px; }
+    .who-name { display: none; }
+  }
+
+  .seg { display: inline-flex; background: var(--soft); border-radius: 11px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    color: var(--muted); font-weight: 600; }
+  .seg button[aria-pressed=true] { background: var(--bg); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  .drop { border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 26px 16px; text-align: center; cursor: pointer;
+    background: var(--softer); transition: border-color .15s, background .15s; color: var(--muted); font-size: 14px; }
   .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
-  .drop strong { display: block; color: var(--text); margin-top: 4px; overflow-wrap: anywhere; }
-  label.check { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
-  .bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .drop .icon { width: 44px; height: 44px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line);
+    display: grid; place-items: center; margin: 0 auto 10px; color: var(--accent); }
+  .drop .icon svg { width: 20px; height: 20px; }
+  .drop b { color: var(--ink); }
+  .drop strong { display: block; margin-top: 8px; color: var(--ink); overflow-wrap: anywhere; font-size: 13px; }
+  .drop strong:empty { display: none; }
+  .drop strong:not(:empty)::before { content: "📎 "; }
+  details.opts { border: 1px solid var(--line); border-radius: 12px; padding: 0 14px; }
+  details.opts summary { cursor: pointer; list-style: none; padding: 11px 0; font-size: 14px; font-weight: 600; color: var(--ink);
+    display: flex; align-items: center; justify-content: space-between; }
+  details.opts summary::-webkit-details-marker { display: none; }
+  details.opts summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint);
+    transform: rotate(45deg); transition: transform .2s; margin-right: 4px; }
+  details.opts[open] summary::after { transform: rotate(-135deg); }
+  details.opts .stack { padding: 2px 0 14px; gap: 2px; }
+  .toggle { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; font-size: 14px; }
+  .toggle input[type=checkbox] { appearance: none; width: 38px; height: 22px; border-radius: 99px; background: var(--line-strong);
+    position: relative; cursor: pointer; flex: none; transition: background .2s; margin: 0; }
+  .toggle input[type=checkbox]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .2s; }
+  .toggle input[type=checkbox]:checked { background: var(--accent); }
+  .toggle input[type=checkbox]:checked::after { transform: translateX(16px); }
+  .toggle .t { flex: 1; color: var(--ink); line-height: 1.35; }
+  .toggle .t small { display: block; color: var(--muted); font-size: 12px; }
+  .field.tiny { width: 76px; padding: 6px 10px; border-radius: 9px; font-size: 13px; }
+  .bar { height: 6px; background: var(--soft); border-radius: 99px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #ffb36b, var(--accent));
+    transition: width .4s; }
 
-  .job { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
-  .job:first-child { border-top: 0; padding-top: 4px; }
-  .job.active .title { color: var(--accent); }
-  .job .title { font-weight: 600; overflow-wrap: anywhere; cursor: pointer; }
-  .job .meta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .chip { font-size: 11px; padding: 1px 8px; border-radius: 99px; font-weight: 600; }
-  .chip.done { color: var(--accent); background: var(--accent-soft); }
-  .chip.failed { color: var(--danger); background: var(--danger-soft); }
+  .job { padding: 14px 4px; border-top: 1px solid var(--line); display: grid; gap: 7px; }
+  .job:first-child { border-top: 0; padding-top: 2px; }
+  .job .title { font-weight: 650; color: var(--ink); overflow-wrap: anywhere; cursor: pointer; line-height: 1.4; }
+  .job.done .title:hover { color: var(--accent-deep); }
+  .job.active .title { color: var(--accent-deep); }
+  .job .meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px 10px; flex-wrap: wrap; align-items: center; }
+  .chip { font-size: 11.5px; padding: 2px 9px 2px 8px; border-radius: 99px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .chip.done { color: var(--ok); background: var(--ok-soft); }
+  .chip.failed { color: var(--bad); background: var(--bad-soft); }
   .chip.running, .chip.queued, .chip.uploading { color: var(--warn); background: var(--warn-soft); }
-  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip.running::before { animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
-  .viewer h1 { font-size: 21px; margin: 0 0 8px; overflow-wrap: anywhere; letter-spacing: -.01em; }
-  .viewer h2 { font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin: 26px 0 8px; }
-  .viewer p { margin: 10px 0; }
-  .viewer code { font-size: 12px; color: var(--muted); }
-  .viewer p > a.t, .viewer p > code:first-child { font-size: 12px; font-variant-numeric: tabular-nums; text-decoration: none;
-    background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; margin-right: 2px; }
-  .facts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .facts span { font-size: 12px; color: var(--muted); background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 1px 8px; }
-  .limits { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 8px; margin: 0 0 10px; padding: 8px 10px 8px 26px; }
-  .viewer h3 { font-size: 14px; margin: 14px 0 6px; }
+  .search { position: relative; }
+  .search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--faint); }
+  .search .field { padding-left: 40px; background: var(--softer); }
+  .hit { padding: 12px 2px; border-top: 1px solid var(--line); font-size: 14px; }
+  .hit:first-child { margin-top: 10px; }
+  .hit b { cursor: pointer; color: var(--ink); }
+  .hit b:hover { color: var(--accent-deep); }
+  mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 1px; }
+
+  .viewer { min-height: 360px; }
+  .viewer .placeholder { display: grid; place-items: center; text-align: center; padding: 70px 10px; color: var(--muted); }
+  .viewer .placeholder .icon { width: 56px; height: 56px; border-radius: 16px; background: var(--accent-soft); color: var(--accent);
+    display: grid; place-items: center; margin-bottom: 14px; }
+  .viewer .placeholder .icon svg { width: 24px; height: 24px; }
+  .viewer .placeholder b { color: var(--ink); font-size: 16px; display: block; margin-bottom: 4px; }
+  .viewer h1 { font-size: clamp(22px, 2.6vw, 28px); line-height: 1.25; margin: 2px 0 12px; color: var(--ink); overflow-wrap: anywhere;
+    letter-spacing: -0.04em; font-weight: 800; }
+  .viewer h2 { font-size: 12px; font-weight: 700; color: var(--faint); letter-spacing: .04em; display: flex; align-items: center; gap: 10px;
+    margin: 30px 0 6px; }
+  .viewer h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .viewer h3 { font-size: 15px; margin: 16px 0 6px; color: var(--ink); }
+  .viewer p { margin: 12px 0; line-height: 1.75; color: var(--text); }
   .viewer ul.md { margin: 6px 0 10px; padding-left: 20px; }
-  .viewer ul.md li { margin: 2px 0; }
-  .viewer .summary { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px 8px; margin: 12px 0 4px; }
-  .spk { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 5px; margin-right: 4px; background: var(--sunk); border: 1px solid var(--line); }
-  .spk.s1 { color: #2f6db5; } .spk.s2 { color: #b5532f; } .spk.s3 { color: #6a2fb5; } .spk.s4 { color: #2f8a4c; } .spk.s5 { color: #a8862a; }
-  details.opts summary { cursor: pointer; color: var(--muted); font-size: 13px; }
-  details.opts .stack { margin-top: 8px; gap: 6px; }
-  .field.tiny { width: 70px; padding: 3px 7px; }
-  .hit { padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
-  .hit b { cursor: pointer; }
-  mark { background: var(--mark); color: inherit; border-radius: 2px; }
+  .viewer code { font-size: 12px; color: var(--muted); }
+  .viewer p > a.t, .viewer p > code:first-child, .preview p > code:first-child { font: 600 12px/1 var(--font); font-variant-numeric: tabular-nums; text-decoration: none;
+    background: var(--accent-soft); color: var(--accent-deep); padding: 4px 7px; border-radius: 7px; margin-right: 4px; vertical-align: 1px; }
+  .viewer p > a.t:hover { background: var(--accent); color: #fff; }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .facts span { font-size: 12px; color: var(--muted); background: var(--soft); border-radius: 8px; padding: 3px 9px; }
+  .limits { font-size: 12.5px; color: var(--warn); background: var(--warn-soft); border-radius: 12px; margin: 0 0 6px;
+    padding: 10px 14px 10px 30px; }
+  .spk { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 7px; margin-right: 4px; }
+  .spk.s1 { color: #2563eb; background: #eaf1ff; } .spk.s2 { color: #c2410c; background: #fff0e6; } .spk.s3 { color: #7c3aed; background: #f3edff; }
+  .spk.s4 { color: #15803d; background: #e9f7ee; } .spk.s5 { color: #a16207; background: #fdf6dd; }
+  .viewer-tools { display: flex; gap: 6px; flex-wrap: wrap; }
 
-  .login-wrap { min-height: calc(100vh - 60px); display: grid; place-items: center; padding: 24px 16px; }
-  .login { width: 100%; max-width: 400px; text-align: center; }
-  .login h1 { font-size: 20px; margin: 4px 0; }
-  #widget { min-height: 48px; margin: 18px 0 6px; display: flex; justify-content: center; }
-  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tg); margin-right: 6px;
-    animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: .25; } }
-
-  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; background: var(--panel); color: var(--text);
-    width: min(540px, calc(100vw - 32px)); }
-  dialog::backdrop { background: rgba(0,0,0,.35); }
-  .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
-  .dlg-body { padding: 8px 16px 16px; }
-  .user { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); gap: 8px; }
+  dialog { border: 0; border-radius: 20px; padding: 0; background: var(--bg); color: var(--text); width: min(560px, calc(100vw - 32px));
+    box-shadow: 0 40px 80px -20px rgba(0,0,0,.35); }
+  dialog::backdrop { background: rgba(20,20,19,.35); backdrop-filter: blur(3px); }
+  .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px 6px; }
+  .dlg-head b { font-size: 18px; color: var(--ink); letter-spacing: -0.03em; }
+  .dlg-body { padding: 4px 20px 20px; }
+  .user { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); gap: 10px; }
   .user:first-child { border-top: 0; }
+  .user .id { display: flex; gap: 10px; align-items: center; min-width: 0; }
+  .user .id div { min-width: 0; overflow-wrap: anywhere; }
+  .hint { font-size: 13px; color: var(--muted); background: var(--softer); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; }
 </style>
 <script src="config.js"></script>
 </head>
 <body>
-<header>
-  <div class="brand"><i></i>vid2md</div>
-  <span class="muted">영상을 글로</span>
-  <div class="spacer"></div>
-  <div class="who" id="who" hidden>
-    <span id="who-name"></span><span class="badge" id="who-admin" hidden>관리자</span>
-    <button class="btn small" id="open-users" hidden>사용자 <span class="badge warn" id="pending-count" hidden></span></button>
-    <button class="btn small ghost" id="logout">로그아웃</button>
+
+<!-- ======================= login ======================= -->
+<div class="login-page" id="login" hidden>
+  <div class="login-top"><span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span>vid2md</span></div>
+  <div class="login-main">
+    <section class="hero">
+      <h1>영상을 글로,<br><em>한 번에.</em></h1>
+      <p class="lead">YouTube 링크나 영상·음성 파일을 올리면<br>시간이 표시된 깔끔한 문서로 바꿔 드려요.</p>
+      <div class="signin">
+        <div id="login-idle">
+          <div class="signin-label">텔레그램으로 계속하기</div>
+          <div class="muted">버튼을 누르고 텔레그램에서 <b>확인</b>을 누르면 끝이에요.</div>
+          <div id="widget"></div>
+          <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            <span>초대받은 계정만 들어올 수 있어요. 처음이면 관리자가 허용하는 즉시 자동으로 들어가집니다.</span></div>
+        </div>
+        <div id="login-wait" class="wait" hidden>
+          <div class="ring"><span class="avatar" id="wait-avatar"></span></div>
+          <h2>승인을 기다리고 있어요</h2>
+          <p><b id="wait-name"></b> 님의 요청을 관리자에게 보냈어요.<br>허용되면 이 화면이 자동으로 넘어가요.</p>
+          <button class="btn small ghost" id="wait-cancel">다른 계정으로 로그인</button>
+        </div>
+        <div class="error" id="login-error" style="margin-top:12px"></div>
+      </div>
+      <div class="features"><span>🎬 YouTube · 파일</span><span>⏱ 타임스탬프</span><span>🗣 화자 구분</span><span>📄 md · srt · vtt · txt</span></div>
+    </section>
+    <aside class="preview" aria-hidden="true">
+      <div class="bar-top"><i></i><i></i><i></i></div>
+      <h3>MCP로 만드는 나만의 도구</h3>
+      <div class="facts"><span>음성 인식</span><span>길이 48:12</span><span>화자 2명</span></div>
+      <p><code>00:00</code> <span class="spk s1">화자 1</span> 오늘은 MCP 서버를 직접 만들어 보면서 도구 설계에서 중요한 점을 정리해 보겠습니다.</p>
+      <p><code>00:42</code> <span class="spk s2">화자 2</span> 처음 만들 때 가장 많이 하는 실수가 뭔가요?</p>
+      <p><code>01:05</code> <span class="spk s1">화자 1</span> 도구가 너무 많은 일을 한 번에 하려는 거예요. 입력과 출력을 작게 나누는 게…</p>
+    </aside>
+  </div>
+  <div class="login-foot">vid2md · 영상을 글로</div>
+</div>
+
+<!-- ======================= app ======================= -->
+<header class="top" id="who" hidden>
+  <div class="top-in">
+    <span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span>vid2md</span>
+    <div class="spacer"></div>
+    <div class="who">
+      <button class="btn small" id="open-users" hidden>사용자 <span class="dot-count" id="pending-count" hidden></span></button>
+      <span class="badge accent" id="who-admin" hidden>관리자</span>
+      <span class="avatar" id="who-avatar"></span><span class="who-name" id="who-name"></span>
+      <button class="btn small ghost" id="logout">로그아웃</button>
+    </div>
   </div>
 </header>
 
-<div class="login-wrap" id="login" hidden>
-  <section class="card login">
-    <h1>로그인</h1>
-    <p class="muted" style="margin:0">허용된 텔레그램 계정만 들어올 수 있습니다.</p>
-    <div id="login-idle">
-      <div id="widget"></div>
-      <p class="muted" style="margin:0">버튼을 누르고 텔레그램에서 <b>확인</b>하면 로그인됩니다.</p>
-    </div>
-    <div id="login-wait" hidden style="margin-top:18px">
-      <div style="font-size:17px;font-weight:700;margin-bottom:4px"><span class="pulse"></span>관리자 승인 대기 중</div>
-      <p class="muted"><b id="wait-name"></b> 님의 요청을 관리자에게 보냈습니다.<br>허용되면 이 화면이 자동으로 로그인됩니다.</p>
-      <button class="btn small ghost" id="wait-cancel">다른 계정으로</button>
-    </div>
-    <div class="error" id="login-error" style="margin-top:10px"></div>
-  </section>
-</div>
-
-<main id="app" hidden>
+<main class="app" id="app" hidden>
   <div class="col">
     <section class="card">
-      <div class="card-head"><h2>새로 만들기</h2>
+      <div class="card-head"><h2>새 변환</h2>
         <div class="seg" role="group">
-          <button aria-pressed="true" data-tab="file">파일</button><button aria-pressed="false" data-tab="url">YouTube</button>
+          <button aria-pressed="true" data-tab="file" type="button">파일</button><button aria-pressed="false" data-tab="url" type="button">YouTube</button>
         </div>
       </div>
       <form id="new-form" class="stack">
         <div data-pane="file">
-          <div class="drop" id="drop">영상·음성·자막 파일을 끌어다 놓거나 눌러서 고르세요<strong id="picked"></strong></div>
+          <div class="drop" id="drop">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></div>
+            <b>파일을 끌어다 놓거나 눌러서 선택</b><br><span class="muted">영상 · 음성 · 자막 (최대 2GB)</span>
+            <strong id="picked"></strong>
+          </div>
           <input type="file" id="file" hidden
                  accept=".mp4,.mkv,.mov,.avi,.webm,.m4v,.wmv,.mp3,.m4a,.wav,.flac,.ogg,.opus,.aac,.wma,.srt,.vtt">
         </div>
         <div data-pane="url" hidden>
           <input class="field" type="text" id="url" placeholder="https://www.youtube.com/watch?v=...">
         </div>
-        <input class="field" type="text" id="prompt" placeholder="자주 나오는 용어 (선택) 예: MCP, Claude Code, API">
-        <label class="check" id="force-wrap" hidden><input type="checkbox" id="force"> 자막이 있어도 음성 인식</label>
+        <input class="field" type="text" id="prompt" placeholder="자주 나오는 용어 (선택) · 예: MCP, Claude Code">
+        <label class="toggle" id="force-wrap" hidden><input type="checkbox" id="force">
+          <span class="t">자막이 있어도 음성 인식<small>YouTube 자막이 부정확할 때</small></span></label>
         <details class="opts" id="opts">
           <summary>추가 기능</summary>
           <div class="stack">
-            <label class="check"><input type="checkbox" id="opt-diarize"> 화자 구분 (누가 말했는지 표시)
+            <label class="toggle"><input type="checkbox" id="opt-diarize">
+              <span class="t">화자 구분<small>누가 말했는지 표시해요</small></span>
               <input class="field tiny" type="number" id="opt-speakers" min="1" max="20" placeholder="몇 명" title="화자 수를 알면 입력 (정확도 향상)"></label>
-            <label class="check"><input type="checkbox" id="opt-denoise"> 배경음악 제거 (음악이 큰 영상만, 느려짐)</label>
+            <label class="toggle"><input type="checkbox" id="opt-denoise">
+              <span class="t">배경음악 제거<small>음악이 크게 깔린 영상만 · 느려져요</small></span></label>
           </div>
         </details>
-        <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text"></div></div>
+        <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text" style="margin-top:6px"></div></div>
         <button class="btn primary" id="submit">변환 시작</button>
         <div class="error" id="new-error"></div>
       </form>
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>작업</h2>
+      <div class="card-head"><h2>내 작업</h2>
         <div class="seg" role="group">
           <button aria-pressed="true" data-filter="all">전체</button><button aria-pressed="false" data-filter="active">진행</button><button aria-pressed="false" data-filter="done">완료</button><button aria-pressed="false" data-filter="failed">실패</button>
         </div>
@@ -196,21 +332,22 @@
   </div>
 
   <div class="col">
-    <section class="card">
-      <form id="search-form"><input class="field" type="search" id="q" placeholder="모든 전사본에서 검색 (Enter)"></form>
+    <section class="card" style="padding:14px">
+      <form id="search-form" class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input class="field" type="search" id="q" placeholder="모든 전사본에서 검색 (Enter)">
+      </form>
       <div id="hits"></div>
     </section>
-    <section class="card viewer" id="viewer">
-      <div class="empty">완료된 작업을 고르면 여기에 내용이 나옵니다.</div>
-    </section>
+    <section class="card viewer" id="viewer"></section>
   </div>
 </main>
 
 <dialog id="users">
   <div class="dlg-head"><b>사용자</b><button class="btn small ghost" id="close-users">닫기</button></div>
   <div class="dlg-body">
-    <p class="muted">처음 온 사람은 텔레그램으로 로그인을 시도하면 여기에 <b>대기</b>로 나타나고, 관리자 텔레그램으로 알림이 갑니다.
-      알림의 <b>허용·거절</b> 버튼이나 봇 명령 <code>/pending</code>, <code>/users</code>로 텔레그램에서도 처리할 수 있습니다(최대 1분 뒤 반영).</p>
+    <div class="hint">처음 온 사람이 로그인을 시도하면 여기에 <b>대기</b>로 나타나고, 텔레그램으로도 알림이 가요.
+      텔레그램 알림의 <b>허용</b> 버튼이나 봇 메뉴(⏳ 승인 대기 · 👥 사용자)로도 처리할 수 있어요.</div>
     <div id="user-list"></div>
   </div>
 </dialog>
@@ -227,7 +364,8 @@ const store = {
   set(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 let token = store.get("vid2md.token"), me = null, jobs = [], filter = "all", tab = "file", picked = null;
-let pollTimer = null, waitTimer = null, openId = null, canSummarize = false;
+let pollTimer = null, waitTimer = null, openId = null;
+const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 
 /* ---------- API (Apps Script: JSON as text/plain avoids a CORS preflight) ---------- */
 async function api(action, params = {}) {
@@ -253,7 +391,7 @@ function showLogin() {
     const s = document.createElement("script");
     s.async = true;
     s.src = "https://telegram.org/js/telegram-widget.js?22";
-    Object.assign(s.dataset, {telegramLogin: CFG.bot, size: "large", radius: "8", lang: "ko",
+    Object.assign(s.dataset, {telegramLogin: CFG.bot, size: "large", radius: "12", lang: "ko", userpic: "false",
                               requestAccess: "write", onauth: "onTelegramAuth(user)"});
     $("#widget").appendChild(s);
   }
@@ -282,6 +420,7 @@ function handleLogin(r, user) {
   store.set("vid2md.pending", JSON.stringify(user));
   $("#login-idle").hidden = true; $("#login-wait").hidden = false;
   $("#wait-name").textContent = r.user?.name || "";
+  $("#wait-avatar").textContent = initial(r.user?.name);
   clearTimeout(waitTimer);
   waitTimer = setTimeout(async () => {
     try { handleLogin(await api("login", {telegram: user}), user); }
@@ -290,9 +429,11 @@ function handleLogin(r, user) {
 }
 
 async function enter() {
-  try { const r = await api("me"); me = r.user; canSummarize = !!r.summary; } catch { return; }
+  try { me = (await api("me")).user; } catch { return; }
   $("#login").hidden = true; $("#app").hidden = false; $("#who").hidden = false;
   $("#who-name").textContent = me.name;
+  $("#who-avatar").textContent = initial(me.name);
+  if (!openId) emptyViewer();
   $("#who-admin").hidden = me.role !== "admin";
   $("#open-users").hidden = me.role !== "admin";
   refresh();
@@ -317,13 +458,14 @@ async function loadUsers() {
   users.sort((a, b) => order[a.status] - order[b.status] || a.added - b.added);
   for (const u of users) {
     const el = document.createElement("div"); el.className = "user";
-    const tag = u.role === "admin" ? '<span class="badge">관리자</span>' :
-      u.status === "pending" ? '<span class="badge warn">대기</span>' : u.status === "denied" ? '<span class="badge warn">거절됨</span>' : "";
+    const tag = u.role === "admin" ? '<span class="badge accent">관리자</span>' :
+      u.status === "pending" ? '<span class="badge accent">대기</span>' : u.status === "denied" ? '<span class="badge">거절됨</span>' : "";
     const buttons = u.role === "admin" ? "" : u.status === "allowed"
       ? '<button class="btn small" data-d="remove">접근 해제</button>'
-      : '<button class="btn small primary" data-d="allow">허용</button>' + (u.status === "pending" ? '<button class="btn small ghost" data-d="deny">거절</button>' : "");
-    el.innerHTML = `<div><b>${esc(u.name)}</b> ${u.username ? `<span class="muted">@${esc(u.username)}</span>` : ""} ${tag}
-      <div class="muted">id ${esc(u.id)} · ${new Date(u.added * 1000).toLocaleDateString("ko-KR")}</div></div><div class="actions">${buttons}</div>`;
+      : '<button class="btn small accent" data-d="allow">허용</button>' + (u.status === "pending" ? '<button class="btn small ghost" data-d="deny">거절</button>' : "");
+    el.innerHTML = `<div class="id"><span class="avatar">${esc(initial(u.name))}</span><div><b>${esc(u.name)}</b>
+      ${u.username ? `<span class="muted">@${esc(u.username)}</span>` : ""} ${tag}
+      <div class="muted">${new Date(u.added * 1000).toLocaleDateString("ko-KR")} 요청</div></div></div><div class="actions">${buttons}</div>`;
     el.querySelectorAll("[data-d]").forEach((b) => b.onclick = async () => {
       if (b.dataset.d === "remove" && !confirm(`${u.name} 님의 접근을 해제할까요? 바로 로그아웃됩니다.`)) return;
       try { await api("decide_user", {id: u.id, decision: b.dataset.d}); loadUsers(); countPending(); }
@@ -423,7 +565,7 @@ function renderJobs() {
   const list = jobs.filter(match), box = $("#jobs");
   box.innerHTML = list.length ? "" : `<div class="empty">${jobs.length ? "해당하는 작업이 없습니다." : "아직 작업이 없습니다."}</div>`;
   for (const job of list) {
-    const el = document.createElement("div"); el.className = "job" + (job.id === openId ? " active" : "");
+    const el = document.createElement("div"); el.className = `job ${job.status}` + (job.id === openId ? " active" : "");
     const pct = Math.round((job.progress || 0) * 100);
     el.innerHTML = `
       <div class="title">${esc(job.title)}</div>
@@ -436,7 +578,7 @@ function renderJobs() {
       ${job.status === "running" ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}
       ${job.error ? `<div class="error">${esc(job.error)}</div>` : ""}
       <div class="actions">
-        ${job.status === "done" ? `<button class="btn small" data-act="view">보기</button><button class="btn small" data-act="md">md 받기</button>` : ""}
+        ${job.status === "done" ? `<button class="btn small accent" data-act="view">열기</button><button class="btn small" data-act="md">md 받기</button>` : ""}
         ${job.status === "failed" ? `<button class="btn small" data-act="retry">다시 시도</button>` : ""}
         ${job.status !== "running" ? `<button class="btn small ghost" data-act="delete">삭제</button>` : ""}
       </div>`;
@@ -448,7 +590,7 @@ function renderJobs() {
 
 function optionTags(o) {
   o = o || {};
-  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.summary && "AI 요약"]
+  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거"]
     .filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join(" ");
 }
 
@@ -460,7 +602,7 @@ async function act(job, action) {
     if (action === "delete") {
       if (!confirm(`"${job.title}"을(를) 삭제할까요? 전사본도 지워집니다.`)) return;
       await api("delete_job", {id: job.id});
-      if (openId === job.id) { openId = null; $("#viewer").innerHTML = '<div class="empty">삭제했습니다.</div>'; }
+      if (openId === job.id) { openId = null; emptyViewer("삭제했어요", "다른 작업을 골라 주세요."); }
     }
     refresh();
   } catch (err) { alert(err.message); }
@@ -545,15 +687,13 @@ function block(b) {
 }
 function toHtml(body) {
   speakerClass = {};
-  const blocks = body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean);
-  // "## 요약" (AI summary) runs until the first timeline heading ("## 00:00").
-  let html = "", inSummary = false;
-  for (const b of blocks) {
-    if (b === "## 요약") { inSummary = true; html += '<div class="summary"><h2>요약</h2>'; continue; }
-    if (inSummary && /^## \d/.test(b)) { inSummary = false; html += "</div>"; }
-    html += block(b) + "\n";
-  }
-  return html + (inSummary ? "</div>" : "");
+  return body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean).map(block).join("\n");
+}
+
+function emptyViewer(title = "전사본을 골라 주세요", text = "완료된 작업의 '열기'를 누르면 여기에 나와요.") {
+  $("#viewer").innerHTML = `<div class="placeholder"><div><div class="icon" style="margin:0 auto 14px"><svg viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+    <path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></div><b>${esc(title)}</b><div class="muted">${esc(text)}</div></div></div>`;
 }
 
 async function view(id) {
@@ -567,22 +707,15 @@ async function view(id) {
   const limits = (m.limitations || []).map((l) => `<li>${esc(l)}</li>`).join("");
   let segs = null;
   try { segs = r.segments ? JSON.parse(r.segments) : null; } catch {}
-  $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:4px"><h2>전사본</h2>
-      <div class="actions">${canSummarize ? `<button class="btn small" id="viewer-sum">✨ ${body.includes("\n## 요약\n") ? "요약 다시" : "AI 요약"}</button>` : ""}
-      <button class="btn small" id="viewer-md">md 받기</button>
-      ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">${k}</button>`).join("") : ""}</div></div>
+  $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:8px"><span class="badge accent">전사본</span>
+      <div class="viewer-tools"><button class="btn small" id="viewer-md">.md</button>
+      ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">.${k}</button>`).join("") : ""}</div></div>
     <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
-  if ($("#viewer-sum")) $("#viewer-sum").onclick = async () => {
-    const btn = $("#viewer-sum");
-    btn.disabled = true; btn.textContent = "요약 중… (10~30초)";
-    try { await api("summarize", {id}); await view(id); $("#viewer .summary")?.scrollIntoView({behavior: "smooth", block: "start"}); }
-    catch (err) { alert(err.message); btn.disabled = false; btn.textContent = "✨ AI 요약"; }
-  };
   document.querySelectorAll("[data-export]").forEach((b) => b.onclick = () =>
     save(r.job.title, `.${b.dataset.export}`, EXPORTS[b.dataset.export](segs), b.dataset.export === "vtt" ? "text/vtt" : "text/plain"));
-  if (matchMedia("(max-width: 880px)").matches) $("#viewer").scrollIntoView({behavior: "smooth", block: "start"});
+  if (matchMedia("(max-width: 920px)").matches) $("#viewer").scrollIntoView({behavior: "smooth", block: "start"});
 }
 
 /* ---------- search ---------- */
@@ -590,11 +723,11 @@ $("#search-form").onsubmit = async (e) => {
   e.preventDefault();
   const q = $("#q").value.trim(), box = $("#hits");
   if (!q) { box.innerHTML = ""; return; }
-  box.innerHTML = '<div class="empty">찾는 중…</div>';
+  box.innerHTML = '<div class="empty" style="padding:14px 0 4px">찾는 중…</div>';
   let hits;
   try { hits = (await api("search", {q})).hits; } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
   const re = new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-  box.innerHTML = hits.length ? "" : '<div class="empty">결과가 없습니다.</div>';
+  box.innerHTML = hits.length ? "" : '<div class="empty" style="padding:14px 0 4px">결과가 없어요.</div>';
   for (const h of hits) {
     const el = document.createElement("div"); el.className = "hit";
     const text = h.text.replace(/^\[[^\]]*\]\([^)]*\)\s*|^`[^`]*`\s*/, "").replace(/^\*\*([^*]+)\*\*\s*/, "$1: ");
