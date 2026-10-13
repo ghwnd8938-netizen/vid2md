@@ -74,7 +74,19 @@
   .signin { background: rgba(255,255,255,.86); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 20px;
     padding: 22px; box-shadow: var(--shadow); max-width: 420px; }
   .signin-label { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
-  #widget { min-height: 44px; margin: 14px 0 12px; display: flex; }
+  .tg-btn { width: 100%; height: 54px; border: 0; border-radius: 14px; background: var(--tg); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px; font: 700 16px/1 var(--font); letter-spacing: -0.02em;
+    box-shadow: 0 10px 24px -12px rgba(42,171,238,.9); transition: background .15s, transform .1s, box-shadow .15s; }
+  .tg-btn:hover { background: #229ed9; }
+  .tg-btn:active { transform: scale(.985); }
+  .tg-btn:disabled { opacity: .6; cursor: default; }
+  .tg-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(42,171,238,.3); }
+  .tg-btn svg { width: 22px; height: 22px; }
+  .signin-sub { text-align: center; font-size: 13px; color: var(--muted); margin: 10px 0 16px; }
+  /* Fallback: Telegram's own button. Its frame may paint a dark backdrop in dark mode; clip it to the button. */
+  #widget { min-height: 44px; display: flex; justify-content: center; }
+  #widget iframe { border-radius: 12px; color-scheme: light dark; }
+  .signin .note { border-top: 1px solid var(--line); padding-top: 14px; }
   .signin .note { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted); }
   .signin .note svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--faint); }
   .features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
@@ -242,9 +254,11 @@
       <p class="lead">YouTube 링크나 영상·음성 파일을 올리면<br>시간이 표시된 깔끔한 문서로 바꿔 드려요.</p>
       <div class="signin">
         <div id="login-idle">
-          <div class="signin-label">텔레그램으로 계속하기</div>
-          <div class="muted">버튼을 누르고 텔레그램에서 <b>확인</b>을 누르면 끝이에요.</div>
-          <div id="widget"></div>
+          <button class="tg-btn" id="tg-login" type="button" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.4 4.2 2.9 11.3c-1.3.5-1.2 1.2-.2 1.5l4.7 1.5 1.8 5.6c.2.6.4.8.8.8.4 0 .6-.2.9-.4l2.3-2.2 4.8 3.5c.9.5 1.5.2 1.7-.8l3.1-14.6c.3-1.3-.5-1.9-1.4-1.5zM9.6 14l8.6-7.6c.4-.3-.1-.5-.6-.2L7.9 13.1"/></svg>
+            <span>텔레그램으로 로그인</span></button>
+          <div id="widget" hidden></div>
+          <div class="signin-sub">누르면 텔레그램 창이 열려요. <b>확인</b>만 누르면 끝!</div>
           <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
             <span>초대받은 계정만 들어올 수 있어요. 처음이면 관리자가 허용하는 즉시 자동으로 들어가집니다.</span></div>
         </div>
@@ -395,14 +409,61 @@ function showLogin() {
   clearTimeout(pollTimer);
   $("#app").hidden = true; $("#who").hidden = true; $("#login").hidden = false;
   $("#login-idle").hidden = false; $("#login-wait").hidden = true;
-  if (!$("#widget").childElementCount) {
+  prepareLogin();
+}
+
+/* Our own button opens Telegram's official login popup (Telegram.Login.auth), so it can match the page.
+   Without the bot's numeric id (older backend) it falls back to Telegram's ready-made button. */
+let telegramScript = null, loginReady = null;
+function loadTelegram() {
+  return telegramScript ||= new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    s.async = true;
-    s.src = "https://telegram.org/js/telegram-widget.js?22";
-    Object.assign(s.dataset, {telegramLogin: CFG.bot, size: "large", radius: "12", lang: "ko", userpic: "false",
-                              requestAccess: "write", onauth: "onTelegramAuth(user)"});
-    $("#widget").appendChild(s);
-  }
+    s.src = "https://telegram.org/js/telegram-widget.js?22"; s.async = true;
+    s.onload = resolve; s.onerror = () => { telegramScript = null; reject(new Error("load")); };
+    document.head.appendChild(s);
+  });
+}
+function prepareLogin() {
+  return loginReady ||= (async () => {
+    let botId = store.get("vid2md.bot_id");
+    if (!botId) {
+      try { botId = String((await api("config")).bot_id || ""); } catch { botId = ""; }
+      if (botId) store.set("vid2md.bot_id", botId);
+    }
+    try { await loadTelegram(); }
+    catch { loginReady = null; $("#login-error").textContent = "텔레그램 로그인을 불러오지 못했어요. 새로고침해 주세요."; return; }
+    if (botId && window.Telegram?.Login?.auth) {
+      const btn = $("#tg-login");
+      btn.disabled = false;
+      btn.onclick = () => telegramPopup(botId);
+    } else {
+      showTelegramWidget();
+    }
+  })();
+}
+function telegramPopup(botId) {
+  $("#login-error").textContent = "";
+  // Telegram.Login.auth doesn't say when the browser blocks its window, so watch window.open.
+  const open = window.open;
+  let popup = null;
+  window.open = (...args) => (popup = open.apply(window, args));
+  try {
+    Telegram.Login.auth({bot_id: botId, request_access: "write", lang: "ko"}, (user) => {
+      if (user) onTelegramAuth(user);
+    });
+  } finally { window.open = open; }
+  if (!popup) $("#login-error").textContent = "로그인 창이 막혔어요. 메신저 안에서 열었다면 Safari나 Chrome으로 열어 주세요.";
+}
+function showTelegramWidget() {
+  $("#tg-login").hidden = true;
+  $("#widget").hidden = false;
+  if ($("#widget").childElementCount) return;
+  const s = document.createElement("script");
+  s.async = true;
+  s.src = "https://telegram.org/js/telegram-widget.js?22";
+  Object.assign(s.dataset, {telegramLogin: CFG.bot, size: "large", radius: "12", lang: "ko", userpic: "false",
+                            requestAccess: "write", onauth: "onTelegramAuth(user)"});
+  $("#widget").appendChild(s);
 }
 function signOut() { token = null; store.set("vid2md.token", null); me = null; showLogin(); }
 $("#logout").onclick = signOut;
