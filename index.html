@@ -250,7 +250,21 @@
   .dict-form .arrow { color: var(--faint); }
   @media (max-width: 520px) { .dict-form { grid-template-columns: 1fr; } .dict-form .arrow { display: none; } }
   .dict-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
-  #dict-list { max-height: 50vh; overflow: auto; }
+  #dict-list { max-height: 46vh; overflow: auto; }
+  .dict-form { grid-template-columns: 1fr auto 1fr; }
+  .dict-form .row2 { grid-column: 1 / -1; display: flex; gap: 8px; }
+  .dict-form .row2 select { flex: 1; }
+  select.field { appearance: none; background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a9a8a2' stroke-width='3'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right: 34px; }
+  .dict-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
+  .dict-tabs button { border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
+  .dict-tabs button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .term-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: var(--accent-soft); color: var(--accent-deep); border-radius: 8px; padding: 3px 4px 3px 10px; }
+  .term-chip button { border: 0; background: transparent; color: inherit; opacity: .6; cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 5px; border-radius: 6px; }
+  .term-chip button:hover { opacity: 1; background: rgba(255,255,255,.6); }
+  details.bulk { border: 1px dashed var(--line-strong); border-radius: 12px; padding: 0 12px; margin: 4px 0 8px; }
+  details.bulk summary { cursor: pointer; padding: 9px 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+  details.bulk textarea { width: 100%; min-height: 140px; font: 13px/1.5 var(--font); resize: vertical; }
+  details.bulk .actions { margin: 8px 0 12px; }
   .hint { font-size: 13px; color: var(--muted); background: var(--softer); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; }
 </style>
 <script src="config.js"></script>
@@ -334,6 +348,9 @@
         </div>
         <input class="field" type="text" id="prompt" placeholder="이 영상에 나오는 용어 (선택) · 예: Ghidra, Notion"
                title="용어 사전에 있는 말은 따로 적지 않아도 자동으로 들어가요">
+        <select class="field" id="glossary" hidden title="이 영상 주제의 용어 묶음을 고르면 그 단어들이 음성 인식 힌트로 들어가요">
+          <option value="">용어 묶음 없음</option>
+        </select>
         <label class="toggle" id="force-wrap" hidden><input type="checkbox" id="force">
           <span class="t">자막이 있어도 음성 인식<small>YouTube 자막이 부정확할 때</small></span></label>
         <details class="opts" id="opts">
@@ -381,11 +398,17 @@
       처음부터 덜 틀리게 해요. 사람이 올린 자막과 제목은 바꾸지 않아요.</div>
     <div id="dict-edit" hidden>
       <form class="dict-form" id="dict-form">
-        <input class="field" id="dict-wrong" placeholder="틀린 말 (쉼표로 여러 개)" autocomplete="off">
+        <input class="field" id="dict-wrong" placeholder="틀린 말 (비우면 힌트 용어로만)" autocomplete="off">
         <span class="arrow">→</span>
-        <input class="field" id="dict-right" placeholder="바른 말" autocomplete="off">
-        <button class="btn accent">추가</button>
+        <input class="field" id="dict-right" placeholder="바른 말 / 용어" autocomplete="off">
+        <div class="row2"><select class="field" id="dict-group"></select><button class="btn accent">추가</button></div>
       </form>
+      <details class="bulk" id="dict-bulk">
+        <summary>여러 개 한 번에 붙여넣기</summary>
+        <textarea class="field" id="dict-text" placeholder="## 뉴스·정치&#10;더불어민주당&#10;이 재명 → 이재명&#10;&#10;## 한국 여행 블로그&#10;Gwangjang Market&#10;광장 마켓, 광장마켓 → Gwangjang Market"></textarea>
+        <div class="muted">한 줄에 하나씩. <b>## 이름</b>은 묶음, <b>틀린 말 → 바른 말</b>은 고쳐쓰기, 단어만 쓰면 힌트 용어예요.</div>
+        <div class="actions"><button class="btn small accent" id="dict-import" type="button">넣기</button></div>
+      </details>
       <div class="error" id="dict-error" style="margin-bottom:6px"></div>
       <div class="dict-tools">
         <button class="btn small" id="dict-apply" type="button">지금까지 전사본에도 적용</button>
@@ -393,6 +416,7 @@
         <span class="muted" id="dict-status"></span>
       </div>
     </div>
+    <div class="dict-tabs" id="dict-tabs"></div>
     <div id="dict-list"></div>
   </div>
 </dialog>
@@ -544,37 +568,91 @@ async function openDict(prefill = "") {
   await loadDict();
   if (prefill) $("#dict-right").focus();
 }
+let dictTab = "", dictGroups = [];
 async function loadDict() {
   let r;
   try { r = await api("dictionary"); } catch (err) { $("#dict-list").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
   $("#dict-edit").hidden = !r.can_edit;
-  const groups = {};
-  for (const rule of r.rules) (groups[rule.right] ||= []).push(rule);
-  const names = Object.keys(groups).sort((a, b) => a.localeCompare(b, "ko"));
+  dictGroups = r.groups || [];
+  fillGroups(dictGroups);
+  if (dictTab && dictTab !== "*" && !dictGroups.includes(dictTab)) dictTab = "";
+  // tabs: 전체 · 공통 · each pack
+  const tabs = [["*", "전체"], ["", "공통"], ...dictGroups.map((g) => [g, g])];
+  $("#dict-tabs").innerHTML = tabs.map(([k, label]) => `<button type="button" data-tab="${esc(k)}" aria-pressed="${k === (dictTab || "")}">${esc(label)}</button>`).join("");
+  $("#dict-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => { dictTab = b.dataset.tab; loadDict(); });
+  const rows = r.rules.filter((x) => dictTab === "*" || x.group === (dictTab || ""));
   const box = $("#dict-list"); box.innerHTML = "";
-  if (!names.length) {
-    box.innerHTML = `<div class="empty">${r.can_edit ? "아직 비어 있어요. 위에서 추가하거나 '기본 목록 넣기'를 눌러 보세요." : "아직 비어 있어요. 관리자에게 추가를 부탁하세요."}</div>`;
-    return;
-  }
-  for (const right of names) {
+  const remove = (id) => async () => { try { await api("dict_remove", {id}); loadDict(); } catch (err) { alert(err.message); } };
+  const x = (id) => (r.can_edit ? `<button type="button" data-id="${esc(id)}" title="지우기">✕</button>` : "");
+  const terms = rows.filter((t) => !t.wrong);
+  if (terms.length) {
     const el = document.createElement("div"); el.className = "dict-group";
-    el.innerHTML = `<div class="right">${esc(right)}</div><div class="wrongs">${groups[right].map((g) =>
-      `<span class="wrong-chip">${esc(g.wrong)}${r.can_edit ? `<button type="button" data-id="${esc(g.id)}" title="지우기">✕</button>` : ""}</span>`).join("")}</div>`;
-    el.querySelectorAll("[data-id]").forEach((b) => b.onclick = async () => {
-      try { await api("dict_remove", {id: b.dataset.id}); loadDict(); } catch (err) { alert(err.message); }
-    });
+    el.innerHTML = `<div class="right">힌트 용어 <span class="muted">· 음성 인식이 이렇게 적도록 도와요</span></div>
+      <div class="wrongs">${terms.map((t) => `<span class="term-chip">${esc(t.right)}${x(t.id)}</span>`).join("")}</div>`;
     box.appendChild(el);
   }
+  const fixes = {};
+  for (const f of rows.filter((t) => t.wrong)) (fixes[f.right] ||= []).push(f);
+  for (const right of Object.keys(fixes).sort((a, b) => a.localeCompare(b, "ko"))) {
+    const el = document.createElement("div"); el.className = "dict-group";
+    el.innerHTML = `<div class="right">${esc(right)}</div><div class="wrongs">${fixes[right].map((g) =>
+      `<span class="wrong-chip">${esc(g.wrong)}${x(g.id)}</span>`).join("")}</div>`;
+    box.appendChild(el);
+  }
+  box.querySelectorAll("[data-id]").forEach((b) => b.onclick = remove(b.dataset.id));
+  if (dictTab && dictTab !== "*" && r.can_edit) {
+    const del = document.createElement("div"); del.style.margin = "10px 0 2px";
+    del.innerHTML = `<button class="btn small ghost" type="button">'${esc(dictTab)}' 묶음 통째로 지우기</button>`;
+    del.querySelector("button").onclick = async () => {
+      if (!confirm(`'${dictTab}' 묶음의 용어를 모두 지울까요?`)) return;
+      try { await api("dict_remove_group", {group: dictTab}); dictTab = ""; loadDict(); } catch (err) { alert(err.message); }
+    };
+    box.appendChild(del);
+  }
+  if (!box.childElementCount) {
+    box.innerHTML = `<div class="empty">${r.can_edit ? "비어 있어요. 위에서 추가하거나 붙여넣어 보세요." : "아직 비어 있어요. 관리자에게 추가를 부탁하세요."}</div>`;
+  }
 }
+function fillGroups(groups) {
+  const keep = $("#dict-group").value;
+  $("#dict-group").innerHTML = `<option value="">공통 (모든 영상)</option>` + groups.map((g) => `<option>${esc(g)}</option>`).join("")
+    + `<option value="__new">+ 새 묶음 만들기…</option>`;
+  $("#dict-group").value = groups.includes(dictTab) ? dictTab : (groups.includes(keep) ? keep : "");
+  const pick = $("#glossary"), chosen = pick.value;
+  pick.innerHTML = `<option value="">용어 묶음 없음</option>` + groups.map((g) => `<option>${esc(g)}</option>`).join("");
+  pick.value = groups.includes(chosen) ? chosen : "";
+  pick.hidden = !groups.length;
+}
+$("#dict-group").onchange = () => {
+  if ($("#dict-group").value !== "__new") return;
+  const name = (prompt("새 묶음 이름 (예: 뉴스·정치)") || "").trim();
+  if (!name) { $("#dict-group").value = ""; return; }
+  const opt = document.createElement("option"); opt.textContent = name;
+  $("#dict-group").insertBefore(opt, $("#dict-group").lastElementChild); $("#dict-group").value = name;
+};
 $("#dict-form").onsubmit = async (e) => {
   e.preventDefault(); $("#dict-error").textContent = "";
+  const group = $("#dict-group").value === "__new" ? "" : $("#dict-group").value;
   try {
-    const r = await api("dict_add", {wrong: $("#dict-wrong").value, right: $("#dict-right").value});
+    const r = await api("dict_add", {wrong: $("#dict-wrong").value, right: $("#dict-right").value, group});
     $("#dict-wrong").value = ""; $("#dict-right").value = "";
-    $("#dict-status").textContent = r.added ? `${r.added}개 추가했어요. 지난 전사본에도 바로 적용하려면 왼쪽 버튼을 누르세요.` : "이미 있는 말이에요.";
+    $("#dict-status").textContent = r.added ? `${r.added}개 추가했어요.` : "이미 있는 말이에요.";
+    if (group) dictTab = group;
     loadDict(); $("#dict-wrong").focus();
   } catch (err) { $("#dict-error").textContent = err.message; }
 };
+$("#dict-import").onclick = async () => {
+  $("#dict-error").textContent = "";
+  const group = $("#dict-group").value === "__new" ? "" : $("#dict-group").value;
+  try {
+    const r = await api("dict_import", {text: $("#dict-text").value, group});
+    $("#dict-text").value = ""; $("#dict-bulk").open = false;
+    $("#dict-status").textContent = `${r.added}개 넣었어요.`; dictTab = "*"; loadDict();
+  } catch (err) { $("#dict-error").textContent = err.message; }
+};
+async function loadGroups() {
+  try { fillGroups((await api("dictionary")).groups || []); } catch {}
+}
 $("#dict-starter").onclick = async () => {
   try { const r = await api("dict_starter"); $("#dict-status").textContent = `기본 목록에서 ${r.added}개 넣었어요.`; loadDict(); }
   catch (err) { alert(err.message); }
@@ -596,6 +674,7 @@ async function enter() {
   $("#who-name").textContent = me.name;
   $("#who-avatar").textContent = initial(me.name);
   if (!openId) emptyViewer();
+  loadGroups();
   $("#who-admin").hidden = me.role !== "admin";
   $("#open-users").hidden = me.role !== "admin";
   refresh();
@@ -674,7 +753,7 @@ $("#new-form").onsubmit = async (e) => {
   e.preventDefault(); $("#new-error").textContent = "";
   const prompt = $("#prompt").value;
   const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
-                   denoise: $("#opt-denoise").checked};
+                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value};
   $("#submit").disabled = true;
   try {
     if (tab === "url") {
@@ -769,7 +848,7 @@ function renderJobs() {
 
 function optionTags(o) {
   o = o || {};
-  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거"]
+  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.glossary && `📖 ${o.glossary}`]
     .filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join(" ");
 }
 
