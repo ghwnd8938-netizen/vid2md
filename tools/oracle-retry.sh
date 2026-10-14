@@ -28,9 +28,14 @@ if [ -z "$C" ]; then
 fi
 
 # SSH key made here, so you can log in from this Cloud Shell: ssh -i ~/.ssh/vid2md ubuntu@<IP>
-if [ ! -f "$KEY" ]; then
+# RSA: Cloud Shell runs in FIPS mode, which refuses ed25519 keys.
+if [ ! -f "$KEY.pub" ]; then
   mkdir -p "$HOME/.ssh"
-  ssh-keygen -t ed25519 -N "" -f "$KEY" -C vid2md >/dev/null
+  rm -f "$KEY"
+  if ! ssh-keygen -t rsa -b 4096 -N "" -f "$KEY" -C vid2md >/dev/null 2>&1 || [ ! -f "$KEY.pub" ]; then
+    echo "SSH 키를 만들지 못했습니다." >&2
+    exit 1
+  fi
   say "SSH 키를 만들었습니다: $KEY"
 fi
 
