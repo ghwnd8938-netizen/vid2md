@@ -8,7 +8,9 @@
 #      - compute: only Ampere A1, at most 2 OCPU and 12 GB in total; every other shape (GPU, AMD, Intel) is 0
 #      - block/boot volumes: at most 200 GB in total, at most 5 backups
 #    Within a policy, later statements win, so "zero ... quotas" followed by "set" is an allowlist.
-#    A1 quotas count per availability domain, so the A1 allowance goes to the first domain only.
+#    A1 quotas count per availability domain. No "where request.ad" condition: Oracle's docs show two
+#    different spellings for it, and a condition that does not match leaves A1 at 0 (seen in Tokyo).
+#    In a region with several domains this allows 2/12 in each; oracle-retry.sh still makes only one server.
 # 2. A monthly budget of 1 (in the account's currency) that e-mails you as soon as anything is charged,
 #    and when the forecast says something will be. This is only a warning; the quota is the real limit.
 #
@@ -27,18 +29,16 @@ if [ -z "$C" ]; then
   exit 1
 fi
 
-AD=$(q iam availability-domain list -c "$C" --query 'data[0].name' --raw-output)
-if [ -z "$AD" ] || [ "$AD" = "null" ]; then
-  echo "가용 도메인을 찾지 못했습니다." >&2
-  exit 1
+ADS=$(q iam availability-domain list -c "$C" --query 'length(data)' --raw-output)
+if [ "${ADS:-1}" != "1" ]; then
+  echo "참고: 가용 도메인이 ${ADS}개라 도메인마다 2코어/12GB까지 허용됩니다. 콘솔에서 서버를 따로 만들지 마세요."
 fi
 
-WHERE="where request.ad = '$AD'"
-STATEMENTS=$(jq -nc --arg where "$WHERE" '[
+STATEMENTS=$(jq -nc '[
   "zero compute-core quotas in tenancy",
-  "set compute-core quota standard-a1-core-count to 2 in tenancy \($where)",
+  "set compute-core quota standard-a1-core-count to 2 in tenancy",
   "zero compute-memory quotas in tenancy",
-  "set compute-memory quota standard-a1-memory-count to 12 in tenancy \($where)",
+  "set compute-memory quota standard-a1-memory-count to 12 in tenancy",
   "set block-storage quota total-storage-gb to 200 in tenancy",
   "set block-storage quota backup-count to 5 in tenancy"
 ]')

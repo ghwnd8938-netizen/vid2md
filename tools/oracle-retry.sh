@@ -116,7 +116,9 @@ while true; do
       if grep -qiE "out of (host )?capacity|InternalError|TooManyRequests|429" <<<"$out"; then
         say "#${round} ${ocpus}/${mem} ${ad##*:}: 자리 없음"
       elif grep -qiE "LimitExceeded|QuotaExceeded|limit" <<<"$out"; then
-        say "#${round} ${ocpus}/${mem} ${ad##*:}: 무료 한도 초과 — 더 작은 크기로 넘어갑니다"
+        say "#${round} ${ocpus}/${mem} ${ad##*:}: 한도 초과 — 더 작은 크기로 넘어갑니다"
+        msg=$(grep -oE '"message": "[^"]*"' <<<"$out" | head -1)
+        echo "          ${msg:-$(head -c 300 <<<"$out")}"
         break
       else
         say "예상하지 못한 오류로 멈춥니다:"
