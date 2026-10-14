@@ -8,6 +8,7 @@
 #      - compute: only Ampere A1, at most 2 OCPU and 12 GB in total; every other shape (GPU, AMD, Intel) is 0
 #      - block/boot volumes: at most 200 GB in total, at most 5 backups
 #    Within a policy, later statements win, so "zero ... quotas" followed by "set" is an allowlist.
+#    A change takes a few minutes to apply; launches in between can still fail on the old quota.
 #    A1 has a per-domain and a per-region quota (standard-a1-core-count / -regional-count); "zero" covers
 #    both, so both are set again. The regional one caps the total even in regions with several domains.
 # 2. A monthly budget of 1 (in the account's currency) that e-mails you as soon as anything is charged,
@@ -50,6 +51,7 @@ else
 fi
 echo "  - 서버: Ampere A1 만, 합계 2코어 / 12GB 까지 (그 밖의 서버 종류는 0)"
 echo "  - 디스크: 합계 200GB, 백업 5개까지"
+echo "  - 바뀐 정책이 실제로 반영되기까지 몇 분 걸립니다. 그동안 서버 생성이 '한도 초과'로 막힐 수 있습니다."
 
 BUDGET=$(q budgets budget budget list -c "$C" --display-name "$NAME" --query 'data[0].id' --raw-output)
 if [ -n "$BUDGET" ] && [ "$BUDGET" != "null" ]; then
