@@ -4,16 +4,16 @@
 # Run in Oracle Cloud Shell (the >_ icon at the top of the console; free, already signed in):
 #   curl -fsSL -o oracle-retry.sh <raw URL of this file> && bash oracle-retry.sh
 #
-# It tries VM.Standard.A1.Flex with 4 OCPU/24 GB, then 2/12, then 1/6 (all inside Always Free), in every
-# availability domain, waits WAIT seconds and starts over. Only Always Free shapes are used, and a Free
-# Tier account cannot create paid resources anyway. Stop with Ctrl+C. Safe to run again: it stops at once
-# if a server named $NAME already exists.
+# It tries VM.Standard.A1.Flex with 2 OCPU/12 GB, then 1/6, in every availability domain, waits WAIT seconds
+# and starts over. Always Free covers 2 OCPU and 12 GB of A1 in total (cut from 4/24 in 2026), so it refuses
+# anything bigger: on a Pay As You Go account a bigger server would be billed. Stop with Ctrl+C. Safe to run
+# again: it stops at once if a server named $NAME already exists. On Pay As You Go, run oracle-guard.sh first.
 #
-# Settings (environment variables): NAME (vid2md), SHAPES ("4:24 2:12 1:6"), WAIT (90), DISK_GB (100).
+# Settings (environment variables): NAME (vid2md), SHAPES ("2:12 1:6"), WAIT (90), DISK_GB (100).
 set -uo pipefail
 
 NAME="${NAME:-vid2md}"
-SHAPES="${SHAPES:-4:24 2:12 1:6}"
+SHAPES="${SHAPES:-2:12 1:6}"
 WAIT="${WAIT:-90}"
 DISK_GB="${DISK_GB:-100}"
 C="${COMPARTMENT:-${OCI_TENANCY:-}}"
@@ -24,6 +24,19 @@ q() { oci "$@" 2>/dev/null; }
 
 if [ -z "$C" ]; then
   echo "OCI_TENANCY 가 없습니다. Oracle Cloud Shell 에서 실행하세요." >&2
+  exit 1
+fi
+
+# Never ask for more than Always Free: 2 OCPU / 12 GB of A1 and 200 GB of disk in total.
+for shape in $SHAPES; do
+  ocpus="${shape%%:*}"; mem="${shape##*:}"
+  if ! [[ "$ocpus" =~ ^[0-9]+$ && "$mem" =~ ^[0-9]+$ ]] || [ "$ocpus" -lt 1 ] || [ "$ocpus" -gt 2 ] || [ "$mem" -gt 12 ]; then
+    echo "무료 범위(2코어·12GB)를 넘는 크기는 쓰지 않습니다: $shape" >&2
+    exit 1
+  fi
+done
+if ! [[ "$DISK_GB" =~ ^[0-9]+$ ]] || [ "$DISK_GB" -lt 47 ] || [ "$DISK_GB" -gt 200 ]; then
+  echo "디스크는 47~200GB 안에서 정하세요 (무료 합계 200GB): $DISK_GB" >&2
   exit 1
 fi
 
