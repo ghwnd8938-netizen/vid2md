@@ -122,6 +122,16 @@
   .spacer { flex: 1; }
   .who { display: flex; gap: 8px; align-items: center; }
   .who-name { font-weight: 600; font-size: 14px; color: var(--ink); }
+  .who .btn, .who-name { white-space: nowrap; }
+  /* Phones: keep the header on one line (the avatar already shows who is signed in). */
+  @media (max-width: 560px) {
+    .top-in { padding: 10px 16px; gap: 8px; }
+    .who { gap: 6px; }
+    .who-name, #who-admin { display: none; }
+    .who .btn.small { padding: 6px 9px; }
+    #logout { padding: 6px 4px; }
+  }
+  @media (max-width: 420px) { .logo { font-size: 0; gap: 0; } }
   .dot-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: #fff;
     font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
   main.app { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; display: grid; gap: 24px;
@@ -189,6 +199,33 @@
   .chip.running::before { animation: blink 1.2s ease-in-out infinite; }
   @keyframes blink { 50% { opacity: .2; } }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+  .folders { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; margin: -4px 0 2px; scrollbar-width: none; }
+  .folders::-webkit-scrollbar { display: none; }
+  .fchip { flex: none; border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 99px;
+    padding: 6px 12px; font: 600 13px/1.2 var(--font); cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+    transition: background .15s, border-color .15s, color .15s; }
+  .fchip:hover { border-color: var(--line-strong); color: var(--ink); }
+  .fchip i { font-style: normal; font-weight: 600; font-size: 11.5px; color: var(--faint); }
+  .fchip[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .fchip[aria-pressed=true] i { color: rgba(255,255,255,.6); }
+  .fchip.add { border-style: dashed; color: var(--faint); }
+  .fchip.add:hover { color: var(--accent-deep); border-color: var(--accent); }
+  .fchip.drop-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-deep); }
+  .folder-tools { display: flex; align-items: center; gap: 4px; margin: -4px 0 8px; font-size: 13px; color: var(--muted); }
+  .folder-tools b { color: var(--ink); margin-right: auto; overflow-wrap: anywhere; }
+  .job .title-row { display: flex; gap: 6px; align-items: flex-start; }
+  .job .title-row .title { flex: 1; min-width: 0; }
+  .icon-btn { border: 0; background: transparent; color: var(--faint); cursor: pointer; padding: 1px 6px; border-radius: 7px;
+    font-size: 14px; line-height: 1.5; flex: none; }
+  .icon-btn:hover { color: var(--ink); background: var(--soft); }
+  .job[draggable=true] { cursor: grab; }
+  .job.dragging { opacity: .45; }
+  select.move { appearance: none; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--muted); cursor: pointer;
+    font: 600 13px/1.3 var(--font); padding: 6px 26px 6px 10px; max-width: 160px; text-overflow: ellipsis;
+    background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a9a8a2' stroke-width='3'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; }
+  select.move:hover { background-color: var(--soft); color: var(--ink); }
+  .into { font-size: 12.5px; text-align: center; margin-top: -4px; }
 
   .search { position: relative; }
   .search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--faint); }
@@ -365,6 +402,7 @@
         </details>
         <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text" style="margin-top:6px"></div></div>
         <button class="btn primary" id="submit">변환 시작</button>
+        <div class="muted into" id="into-folder" hidden></div>
         <div class="error" id="new-error"></div>
       </form>
     </section>
@@ -375,6 +413,9 @@
           <button aria-pressed="true" data-filter="all">전체</button><button aria-pressed="false" data-filter="active">진행</button><button aria-pressed="false" data-filter="done">완료</button><button aria-pressed="false" data-filter="failed">실패</button>
         </div>
       </div>
+      <div class="folders" id="folders" role="group" aria-label="폴더"></div>
+      <div class="folder-tools" id="folder-tools" hidden><b id="folder-current"></b>
+        <button class="btn small ghost" id="folder-rename">이름 바꾸기</button><button class="btn small ghost" id="folder-remove">폴더 삭제</button></div>
       <div id="jobs"><div class="empty">불러오는 중…</div></div>
     </section>
   </div>
@@ -448,6 +489,9 @@ const store = {
 };
 let token = store.get("vid2md.token"), me = null, jobs = [], filter = "all", tab = "file", picked = null;
 let pollTimer = null, waitTimer = null, openId = null;
+// Folders in "내 작업": "*" shows everything, "" the jobs in no folder, otherwise a folder id.
+let folders = [], folder = store.get("vid2md.folder") || "*";
+const currentFolder = () => folders.find((f) => f.id === folder) || null;
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 
 /* ---------- API (Apps Script: JSON as text/plain avoids a CORS preflight) ---------- */
@@ -782,7 +826,7 @@ $("#new-form").onsubmit = async (e) => {
   $("#submit").disabled = true;
   try {
     if (tab === "url") {
-      await api("add_link", {url: $("#url").value, prompt, force_whisper: $("#force").checked, options});
+      await api("add_link", {url: $("#url").value, prompt, force_whisper: $("#force").checked, options, folder: currentFolder()?.id || ""});
       $("#url").value = "";
     } else {
       if (!picked) throw new Error("파일을 고르세요.");
@@ -803,7 +847,7 @@ function readBase64(blob) {
 }
 
 async function upload(file, prompt, options) {
-  const start = await api("upload_start", {name: file.name, size: file.size, prompt, options});
+  const start = await api("upload_start", {name: file.name, size: file.size, prompt, options, folder: currentFolder()?.id || ""});
   const size = start.chunk_bytes, total = start.chunks;
   let next = 0, done = 0;
   const show = () => {
@@ -837,21 +881,90 @@ document.querySelectorAll("[data-filter]").forEach((b) => b.onclick = () => {
 
 async function refresh() {
   clearTimeout(pollTimer);
-  try { jobs = (await api("jobs")).jobs; } catch { return; }
+  try { const r = await api("jobs"); jobs = r.jobs; folders = r.folders || []; } catch { return; }
   renderJobs();
   if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) pollTimer = setTimeout(refresh, 8000);
 }
 
+function renderFolders() {
+  if (folder !== "*" && (folder !== "" || !folders.length) && !currentFolder()) folder = "*";
+  const count = (id) => jobs.filter((j) => (j.collection || "") === id).length;
+  const chip = (id, label, n) =>
+    `<button class="fchip" data-folder="${esc(id)}" aria-pressed="${folder === id}">${label} <i>${n}</i></button>`;
+  $("#folders").innerHTML = chip("*", "모든 작업", jobs.length) + (folders.length ? chip("", "폴더 없음", count("")) : "")
+    + folders.map((f) => chip(f.id, `📁 ${esc(f.name)}`, count(f.id))).join("")
+    + '<button class="fchip add" id="folder-add" title="새 폴더 만들기">+ 새 폴더</button>';
+  $("#folders").querySelectorAll("[data-folder]").forEach((b) => {
+    const id = b.dataset.folder;
+    b.onclick = () => { folder = id; store.set("vid2md.folder", id === "*" ? null : id); renderJobs(); };
+    if (id === "*") return;
+    // Drop a job card on a folder to move it there.
+    b.ondragover = (e) => { if (e.dataTransfer.types.includes("text/x-vid2md-job")) { e.preventDefault(); b.classList.add("drop-on"); } };
+    b.ondragleave = () => b.classList.remove("drop-on");
+    b.ondrop = (e) => {
+      e.preventDefault(); b.classList.remove("drop-on");
+      const job = jobs.find((j) => j.id === e.dataTransfer.getData("text/x-vid2md-job"));
+      if (job) moveJob(job, id);
+    };
+  });
+  $("#folder-add").onclick = addFolder;
+  const cur = currentFolder();
+  $("#folder-tools").hidden = !cur;
+  $("#folder-current").textContent = cur ? `📁 ${cur.name}` : "";
+  $("#into-folder").hidden = !cur;
+  $("#into-folder").textContent = cur ? `새 작업은 📁 ${cur.name} 폴더에 들어가요` : "";
+}
+
+async function addFolder() {
+  const name = (prompt("새 폴더 이름 (예: 강의, 회의, 인터뷰)") || "").trim();
+  if (!name) return;
+  try {
+    const r = await api("folder_add", {name});
+    folders.push(r.folder); folder = r.folder.id; store.set("vid2md.folder", folder);
+    refresh();
+  } catch (err) { alert(err.message); }
+}
+
+$("#folder-rename").onclick = async () => {
+  const cur = currentFolder(); if (!cur) return;
+  const name = (prompt("폴더 이름", cur.name) || "").trim();
+  if (!name || name === cur.name) return;
+  try { await api("folder_rename", {id: cur.id, name}); refresh(); } catch (err) { alert(err.message); }
+};
+
+$("#folder-remove").onclick = async () => {
+  const cur = currentFolder(); if (!cur) return;
+  if (!confirm(`"${cur.name}" 폴더를 지울까요?\n안에 있던 작업은 지워지지 않고 '폴더 없음'으로 옮겨집니다.`)) return;
+  try { await api("folder_remove", {id: cur.id}); folder = "*"; store.set("vid2md.folder", null); refresh(); }
+  catch (err) { alert(err.message); }
+};
+
+async function moveJob(job, id) {
+  if ((job.collection || "") === id) return;
+  try { await api("job_move", {id: job.id, folder: id}); job.collection = id; renderJobs(); }
+  catch (err) { alert(err.message); refresh(); }
+}
+
 function renderJobs() {
+  renderFolders();
   const match = {all: () => true, active: (j) => ["queued", "running", "uploading"].includes(j.status),
                  done: (j) => j.status === "done", failed: (j) => j.status === "failed"}[filter];
-  const list = jobs.filter(match), box = $("#jobs");
-  box.innerHTML = list.length ? "" : `<div class="empty">${jobs.length ? "해당하는 작업이 없습니다." : "아직 작업이 없습니다."}</div>`;
+  const inFolder = (j) => folder === "*" || (j.collection || "") === folder;
+  const list = jobs.filter((j) => match(j) && inFolder(j)), box = $("#jobs");
+  const empty = !jobs.length ? "아직 작업이 없습니다."
+    : currentFolder() && !jobs.some(inFolder) ? "비어 있는 폴더예요. 작업의 📁 메뉴로 옮기거나, 이 폴더를 연 채로 새 변환을 시작하세요."
+    : "해당하는 작업이 없습니다.";
+  box.innerHTML = list.length ? "" : `<div class="empty">${empty}</div>`;
   for (const job of list) {
     const el = document.createElement("div"); el.className = `job ${job.status}` + (job.id === openId ? " active" : "");
     const pct = Math.round((job.progress || 0) * 100);
+    const own = job.owner === me?.id;
+    const move = own && folders.length ? `<select class="move" title="폴더로 옮기기" aria-label="폴더로 옮기기">
+        <option value="">📁 폴더 없음</option>${folders.map((f) =>
+          `<option value="${esc(f.id)}"${f.id === job.collection ? " selected" : ""}>📁 ${esc(f.name)}</option>`).join("")}</select>` : "";
     el.innerHTML = `
-      <div class="title">${esc(job.title)}</div>
+      <div class="title-row"><div class="title">${esc(job.title)}</div>
+        <button class="icon-btn" data-act="rename" title="제목 바꾸기" aria-label="제목 바꾸기">✎</button></div>
       <div class="meta"><span class="chip ${esc(job.status)}">${STATUS[job.status] || esc(job.status)}</span>
         ${job.method ? `<span>${esc(METHOD[job.method] || job.method)}</span>` : ""}
         ${optionTags(job.options)}
@@ -863,9 +976,16 @@ function renderJobs() {
       <div class="actions">
         ${job.status === "done" ? `<button class="btn small accent" data-act="view">열기</button><button class="btn small" data-act="md">md 받기</button>` : ""}
         ${job.status === "failed" ? `<button class="btn small" data-act="retry">다시 시도</button>` : ""}
+        ${move}
         ${job.status !== "running" ? `<button class="btn small ghost" data-act="delete">삭제</button>` : ""}
       </div>`;
     el.querySelector(".title").onclick = () => job.status === "done" && view(job.id);
+    if (el.querySelector("select.move")) el.querySelector("select.move").onchange = (e) => moveJob(job, e.target.value);
+    if (own && folders.length) {
+      el.draggable = true;
+      el.ondragstart = (e) => { e.dataTransfer.setData("text/x-vid2md-job", job.id); e.dataTransfer.effectAllowed = "move"; el.classList.add("dragging"); };
+      el.ondragend = () => el.classList.remove("dragging");
+    }
     el.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => act(job, b.dataset.act));
     box.appendChild(el);
   }
@@ -882,6 +1002,12 @@ async function act(job, action) {
     if (action === "view") return view(job.id);
     if (action === "md") return downloadMd(job.id);
     if (action === "retry") await api("retry", {id: job.id});
+    if (action === "rename") {
+      const title = (prompt("새 제목", job.title) || "").trim();
+      if (!title || title === job.title) return;
+      await api("job_rename", {id: job.id, title});
+      if (openId === job.id) view(job.id);
+    }
     if (action === "delete") {
       if (!confirm(`"${job.title}"을(를) 삭제할까요? 전사본도 지워집니다.`)) return;
       await api("delete_job", {id: job.id});
