@@ -269,6 +269,7 @@
   .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px 6px; }
   .dlg-head b { font-size: 18px; color: var(--ink); letter-spacing: -0.03em; }
   .dlg-body { padding: 4px 20px 20px; }
+  dialog.ask { width: min(420px, calc(100vw - 32px)); }
   .user { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); gap: 10px; }
   .user:first-child { border-top: 0; }
   .user .id { display: flex; gap: 10px; align-items: center; min-width: 0; }
@@ -436,6 +437,19 @@
     <section class="card viewer" id="viewer"></section>
   </div>
 </main>
+
+<dialog id="ask" class="ask">
+  <form method="dialog" id="ask-form">
+    <div class="dlg-head"><b id="ask-title"></b></div>
+    <div class="dlg-body">
+      <input class="field" id="ask-input" maxlength="200" autocomplete="off">
+      <div class="actions" style="justify-content:flex-end;margin-top:12px">
+        <button class="btn small ghost" type="button" id="ask-cancel">취소</button>
+        <button class="btn small accent" type="submit" id="ask-ok">확인</button>
+      </div>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="dict">
   <div class="dlg-head"><b>📖 용어 사전</b><button class="btn small ghost" id="close-dict">닫기</button></div>
@@ -705,6 +719,10 @@ async function loadDict() {
     lock.innerHTML = `<input type="checkbox" ${privateGroups.includes(dictTab) ? "checked" : ""}>
       <span class="t">🔒 비공개 묶음<small>켜면 나(관리자)만 보고 고를 수 있어요. 친구들 화면에는 묶음도 단어도 안 보여요.</small></span>`;
     lock.querySelector("input").onchange = async (e) => {
+      // Making a private pack public shows it to everyone, so it takes a deliberate confirmation.
+      if (!e.target.checked && !confirm(`'${dictTab}' 묶음을 공개로 바꿀까요?\n친구들도 이 묶음과 단어를 볼 수 있게 됩니다.`)) {
+        e.target.checked = true; return;
+      }
       try { await api("dict_group_private", {group: dictTab, private: e.target.checked}); loadDict(); }
       catch (err) { alert(err.message); }
     };
@@ -713,7 +731,7 @@ async function loadDict() {
     del.innerHTML = `<button class="btn small ghost" type="button" data-rename>이름 바꾸기</button>
       <button class="btn small ghost" type="button" data-drop>'${esc(dictTab)}' 묶음 통째로 지우기</button>`;
     del.querySelector("[data-rename]").onclick = async () => {
-      const name = (prompt("새 묶음 이름", dictTab) || "").trim();
+      const name = await askText("묶음 이름 바꾸기", dictTab);
       if (!name || name === dictTab) return;
       try { dictTab = (await api("dict_rename_group", {group: dictTab, name})).group; loadDict(); } catch (err) { alert(err.message); }
     };
@@ -738,9 +756,9 @@ function fillGroups(groups) {
   pick.value = all.includes(chosen) ? chosen : "";
   pick.hidden = !groups.length;
 }
-$("#dict-group").onchange = () => {
+$("#dict-group").onchange = async () => {
   if ($("#dict-group").value !== "__new") return;
-  const name = (prompt("새 묶음 이름 (예: 강의, 회의)") || "").trim();
+  const name = await askText("새 묶음 이름", "", "예: 강의, 회의");
   if (!name) { $("#dict-group").value = ""; return; }
   if (confirm("나만 보는 비공개 묶음으로 만들까요?\n(확인: 비공개 · 취소: 친구들도 볼 수 있는 묶음)")) newPrivate[name] = true;
   const opt = document.createElement("option"); opt.value = name; opt.textContent = newPrivate[name] ? `🔒 ${name}` : name;
@@ -976,7 +994,7 @@ function renderFolders() {
 }
 
 async function addFolder() {
-  const name = (prompt("새 폴더 이름 (예: 강의, 회의, 인터뷰)") || "").trim();
+  const name = await askText("새 폴더 이름", "", "예: 강의, 회의, 인터뷰");
   if (!name) return;
   try {
     const r = await api("folder_add", {name});
@@ -987,7 +1005,7 @@ async function addFolder() {
 
 $("#folder-rename").onclick = async () => {
   const cur = currentFolder(); if (!cur) return;
-  const name = (prompt("폴더 이름", cur.name) || "").trim();
+  const name = await askText("폴더 이름 바꾸기", cur.name);
   if (!name || name === cur.name) return;
   try { await api("folder_rename", {id: cur.id, name}); refresh(); } catch (err) { alert(err.message); }
 };
@@ -1063,7 +1081,7 @@ async function act(job, action) {
     if (action === "md") return downloadMd(job.id);
     if (action === "retry") await api("retry", {id: job.id});
     if (action === "rename") {
-      const title = (prompt("새 제목", job.title) || "").trim();
+      const title = await askText("제목 바꾸기", job.title);
       if (!title || title === job.title) return;
       await api("job_rename", {id: job.id, title});
       if (openId === job.id) view(job.id);
@@ -1157,6 +1175,20 @@ function block(b) {
 function toHtml(body) {
   speakerClass = {};
   return body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean).map(block).join("\n");
+}
+
+/* A text box inside the page (the browser's own prompt() blocks the page, also for helpers like Claude in Chrome). */
+function askText(title, value = "", placeholder = "") {
+  const dlg = $("#ask"), input = $("#ask-input");
+  $("#ask-title").textContent = title;
+  input.value = value; input.placeholder = placeholder;
+  return new Promise((resolve) => {
+    const done = (v) => { dlg.close(); dlg.onclose = null; resolve(v); };
+    $("#ask-form").onsubmit = (e) => { e.preventDefault(); done(input.value.trim() || null); };
+    $("#ask-cancel").onclick = () => done(null);
+    dlg.onclose = () => resolve(null);
+    dlg.showModal(); input.focus(); input.select();
+  });
 }
 
 /* The speech model takes about 223 tokens of hints (Whisper: half its 448-token context). This estimates
