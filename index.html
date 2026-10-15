@@ -575,6 +575,24 @@ function showTelegramWidget() {
 }
 function signOut() { token = null; store.set("vid2md.token", null); me = null; showLogin(); }
 $("#logout").onclick = signOut;
+
+/* ---------- sign out after an hour without use (also when the page is opened again later) ---------- */
+const IDLE_MINUTES = 60;
+let activeAt = 0, savedAt = 0, uploading = 0;
+function markActive(force) {
+  activeAt = Date.now();
+  if (force || activeAt - savedAt > 30000) { savedAt = activeAt; store.set("vid2md.active", String(activeAt)); } // shared by open tabs
+}
+["pointerdown", "keydown", "wheel", "touchstart"].forEach((e) => addEventListener(e, () => markActive(), {passive: true, capture: true}));
+function idleOut() {
+  const last = Math.max(activeAt, Number(store.get("vid2md.active")) || 0);
+  if (!token || uploading || !last || Date.now() - last < IDLE_MINUTES * 60000) return false;
+  signOut();
+  $("#login-error").textContent = "1시간 동안 사용하지 않아 자동으로 로그아웃했어요. 다시 로그인해 주세요.";
+  return true;
+}
+setInterval(idleOut, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) idleOut(); });
 $("#wait-cancel").onclick = () => { clearTimeout(waitTimer); store.set("vid2md.pending", null); showLogin(); };
 
 window.onTelegramAuth = async (user) => {
@@ -590,6 +608,7 @@ window.onTelegramAuth = async (user) => {
 function handleLogin(r, user) {
   if (r.status === "approved") {
     token = r.token; store.set("vid2md.token", token); store.set("vid2md.pending", null);
+    markActive(true); // a fresh sign-in starts the hour again
     return enter();
   }
   if (r.status === "denied") { $("#login-error").textContent = "관리자가 접근을 허용하지 않았습니다."; return; }
@@ -676,8 +695,14 @@ async function loadDict() {
     };
     box.appendChild(lock);
     const del = document.createElement("div"); del.style.margin = "6px 0 2px";
-    del.innerHTML = `<button class="btn small ghost" type="button">'${esc(dictTab)}' 묶음 통째로 지우기</button>`;
-    del.querySelector("button").onclick = async () => {
+    del.innerHTML = `<button class="btn small ghost" type="button" data-rename>이름 바꾸기</button>
+      <button class="btn small ghost" type="button" data-drop>'${esc(dictTab)}' 묶음 통째로 지우기</button>`;
+    del.querySelector("[data-rename]").onclick = async () => {
+      const name = (prompt("새 묶음 이름", dictTab) || "").trim();
+      if (!name || name === dictTab) return;
+      try { dictTab = (await api("dict_rename_group", {group: dictTab, name})).group; loadDict(); } catch (err) { alert(err.message); }
+    };
+    del.querySelector("[data-drop]").onclick = async () => {
       if (!confirm(`'${dictTab}' 묶음의 용어를 모두 지울까요?`)) return;
       try { await api("dict_remove_group", {group: dictTab}); dictTab = ""; loadDict(); } catch (err) { alert(err.message); }
     };
@@ -861,6 +886,11 @@ function readBase64(blob) {
 }
 
 async function upload(file, prompt, options) {
+  uploading++; // a long upload is not "idle"
+  try { return await uploadFile(file, prompt, options); } finally { uploading--; markActive(true); }
+}
+
+async function uploadFile(file, prompt, options) {
   const start = await api("upload_start", {name: file.name, size: file.size, prompt, options, folder: currentFolder()?.id || ""});
   const size = start.chunk_bytes, total = start.chunks;
   let next = 0, done = 0;
@@ -1188,7 +1218,8 @@ $("#search-form").onsubmit = async (e) => {
 /* ---------- start ---------- */
 if (!CFG.api || CFG.api.includes("PASTE_")) {
   document.body.innerHTML = '<p style="padding:24px">config.js에 Apps Script 주소와 봇 이름을 넣어 주세요 (deploy/GOOGLE.md).</p>';
-} else if (token) {
+} else if (token && !idleOut()) {
+  markActive(true);
   enter().then(() => { if (!me) showLogin(); });
 } else {
   const pending = store.get("vid2md.pending");
