@@ -1009,7 +1009,7 @@ async function act(job, action) {
       if (openId === job.id) view(job.id);
     }
     if (action === "delete") {
-      if (!confirm(`"${job.title}"을(를) 삭제할까요? 전사본도 지워집니다.`)) return;
+      if (!confirm(`"${job.title}"을(를) 삭제할까요? 전사본과 보관된 원본 영상도 함께 지워집니다.`)) return;
       await api("delete_job", {id: job.id});
       if (openId === job.id) { openId = null; emptyViewer("삭제했어요", "다른 작업을 골라 주세요."); }
     }
@@ -1117,7 +1117,8 @@ async function view(id) {
   let segs = null;
   try { segs = r.segments ? JSON.parse(r.segments) : null; } catch {}
   $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:8px"><span class="badge accent">전사본</span>
-      <div class="viewer-tools">${me?.role === "admin" ? `<button class="btn small" id="viewer-fix" title="틀린 단어를 드래그해서 고른 뒤 누르세요">📖 고칠 말 추가</button>` : ""}
+      <div class="viewer-tools">${r.job.original_url ? `<a class="btn small" href="${esc(r.job.original_url)}" target="_blank" rel="noopener" title="구글 드라이브에 보관된 원본 영상">🎬 원본</a>` : ""}
+      ${me?.role === "admin" ? `<button class="btn small" id="viewer-fix" title="틀린 단어를 드래그해서 고른 뒤 누르세요">📖 고칠 말 추가</button>` : ""}
       <button class="btn small" id="viewer-md">.md</button>
       ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">.${k}</button>`).join("") : ""}</div></div>
     <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
