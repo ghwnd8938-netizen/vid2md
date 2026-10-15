@@ -295,6 +295,9 @@
   .dict-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
   .dict-tabs button { border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
   .dict-tabs button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .hint-note { font-size: 12.5px; color: var(--muted); background: var(--soft); border-radius: 10px; padding: 8px 12px; margin: 4px 0 8px; line-height: 1.5; }
+  .hint-note.full { color: var(--warn); background: var(--warn-soft); }
+  .term-chip.over { opacity: .45; }
   .term-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: var(--accent-soft); color: var(--accent-deep); border-radius: 8px; padding: 3px 4px 3px 10px; }
   .term-chip button { border: 0; background: transparent; color: inherit; opacity: .6; cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 5px; border-radius: 6px; }
   .term-chip button:hover { opacity: 1; background: rgba(255,255,255,.6); }
@@ -637,10 +640,21 @@ async function loadDict() {
   const remove = (id) => async () => { try { await api("dict_remove", {id}); loadDict(); } catch (err) { alert(err.message); } };
   const x = (id) => (r.can_edit ? `<button type="button" data-id="${esc(id)}" title="지우기">✕</button>` : "");
   const terms = rows.filter((t) => !t.wrong);
+  // A pack's words go to the speech model in this order until its prompt budget is full.
+  let hinted = null;
+  if (dictTab && dictTab !== "*") {
+    const words = [...new Set(rows.map((t) => t.right))], n = hintFit(words);
+    hinted = new Set(words.slice(0, n));
+    const note = document.createElement("div"); note.className = "hint-note" + (n < words.length ? " full" : "");
+    note.innerHTML = n < words.length
+      ? `💡 힌트로 쓰이는 단어: <b>앞 ${n}개</b> / 전체 ${words.length}개. 뒤쪽 ${words.length - n}개(흐리게 표시)는 힌트 공간이 모자라 고쳐쓰기로만 쓰여요. 중요한 단어는 다른 묶음으로 나눠 보세요.`
+      : `💡 힌트로 쓰이는 단어: <b>${n}개 전부</b> (힌트 공간 약 ${Math.round(hintUse(words) / HINT_TOKENS * 100)}% 사용)`;
+    box.appendChild(note);
+  }
   if (terms.length) {
     const el = document.createElement("div"); el.className = "dict-group";
     el.innerHTML = `<div class="right">힌트 용어 <span class="muted">· 음성 인식이 이렇게 적도록 도와요</span></div>
-      <div class="wrongs">${terms.map((t) => `<span class="term-chip">${esc(t.right)}${x(t.id)}</span>`).join("")}</div>`;
+      <div class="wrongs">${terms.map((t) => `<span class="term-chip${hinted && !hinted.has(t.right) ? " over" : ""}">${esc(t.right)}${x(t.id)}</span>`).join("")}</div>`;
     box.appendChild(el);
   }
   const fixes = {};
@@ -1097,6 +1111,21 @@ function block(b) {
 function toHtml(body) {
   speakerClass = {};
   return body.trim().split(/\n\n+/).map((b) => b.trim()).filter(Boolean).map(block).join("\n");
+}
+
+/* The speech model takes about 223 tokens of hints (Whisper: half its 448-token context). This estimates
+   its tokenizer from the characters (within ~5% on our packs); the worker cuts with the real one. */
+const HINT_TOKENS = 223;
+function hintCost(t) {
+  const n = (re) => (t.match(re) || []).length;
+  return Math.max(1, 0.923 * n(/[\uac00-\ud7a3]/g) + 0.215 * n(/[A-Za-z]/g) + 0.392 * n(/[0-9]/g)
+    + 1.885 * n(/[^\uac00-\ud7a3A-Za-z0-9 ]/g) + 0.1 * n(/ /g) + 0.753);
+}
+const hintUse = (words) => words.reduce((sum, t, i) => sum + hintCost(t) + (i ? 1 : 0), 0);
+function hintFit(words) {
+  let n = 0;
+  while (n < words.length && hintUse(words.slice(0, n + 1)) <= HINT_TOKENS - 8) n++; // a little room for error
+  return n;
 }
 
 function emptyViewer(title = "전사본을 골라 주세요", text = "완료된 작업의 '열기'를 누르면 여기에 나와요.") {
