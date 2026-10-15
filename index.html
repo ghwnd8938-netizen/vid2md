@@ -1199,9 +1199,10 @@ function askText(title, value = "", placeholder = "") {
   });
 }
 
-/* The speech model takes about 223 tokens of hints (Whisper: half its 448-token context). This estimates
-   its tokenizer from the characters (within ~5% on our packs); the worker cuts with the real one. */
-const HINT_TOKENS = 223;
+/* The worker gives the speech model up to 200 tokens of hints (the rest of Whisper's 448-token window is
+   for the text it writes). This estimates its tokenizer from the characters (within ~5% on our packs);
+   the worker cuts with the real one. */
+const HINT_TOKENS = 200;
 function hintCost(t) {
   const n = (re) => (t.match(re) || []).length;
   return Math.max(1, 0.923 * n(/[\uac00-\ud7a3]/g) + 0.215 * n(/[A-Za-z]/g) + 0.392 * n(/[0-9]/g)
