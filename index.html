@@ -730,10 +730,14 @@ async function loadDict() {
     const del = document.createElement("div"); del.style.margin = "6px 0 2px";
     del.innerHTML = `<button class="btn small ghost" type="button" data-rename>이름 바꾸기</button>
       <button class="btn small ghost" type="button" data-drop>'${esc(dictTab)}' 묶음 통째로 지우기</button>`;
-    del.querySelector("[data-rename]").onclick = async () => {
+    const renameBtn = del.querySelector("[data-rename]");
+    renameBtn.onclick = async () => {
       const name = await askText("묶음 이름 바꾸기", dictTab);
       if (!name || name === dictTab) return;
-      try { dictTab = (await api("dict_rename_group", {group: dictTab, name})).group; loadDict(); } catch (err) { alert(err.message); }
+      // The Apps Script takes a few seconds; show it is working so nobody presses again.
+      await busy(renameBtn, "바꾸는 중…", async () => {
+        try { dictTab = (await api("dict_rename_group", {group: dictTab, name})).group; await loadDict(); } catch (err) { alert(err.message); }
+      });
     };
     del.querySelector("[data-drop]").onclick = async () => {
       if (!confirm(`'${dictTab}' 묶음의 용어를 모두 지울까요?`)) return;
@@ -996,18 +1000,21 @@ function renderFolders() {
 async function addFolder() {
   const name = await askText("새 폴더 이름", "", "예: 강의, 회의, 인터뷰");
   if (!name) return;
+  $("#folder-add").disabled = true; $("#folder-add").textContent = "만드는 중…";
   try {
     const r = await api("folder_add", {name});
     folders.push(r.folder); folder = r.folder.id; store.set("vid2md.folder", folder);
     refresh();
-  } catch (err) { alert(err.message); }
+  } catch (err) { alert(err.message); renderFolders(); }
 }
 
 $("#folder-rename").onclick = async () => {
   const cur = currentFolder(); if (!cur) return;
   const name = await askText("폴더 이름 바꾸기", cur.name);
   if (!name || name === cur.name) return;
-  try { await api("folder_rename", {id: cur.id, name}); refresh(); } catch (err) { alert(err.message); }
+  await busy($("#folder-rename"), "바꾸는 중…", async () => {
+    try { await api("folder_rename", {id: cur.id, name}); await refresh(); } catch (err) { alert(err.message); }
+  });
 };
 
 $("#folder-remove").onclick = async () => {
@@ -1083,6 +1090,7 @@ async function act(job, action) {
     if (action === "rename") {
       const title = await askText("제목 바꾸기", job.title);
       if (!title || title === job.title) return;
+      document.querySelectorAll(".job .title").forEach((el) => { if (el.textContent === job.title) el.textContent = `${title} (바꾸는 중…)`; });
       await api("job_rename", {id: job.id, title});
       if (openId === job.id) view(job.id);
     }
