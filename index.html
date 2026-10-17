@@ -1296,6 +1296,24 @@ async function downloadMd(id) {
   save(r.job.title, ".md", r.markdown, "text/markdown");
 }
 
+/* The MP3 comes from the Apps Script in 4 MB pieces (its answers are limited in size); join and save. */
+async function downloadMp3(job, btn) {
+  if (btn.disabled) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  try {
+    const parts = [];
+    for (let index = 0, chunks = 1; index < chunks; index++) {
+      btn.textContent = chunks > 1 ? `받는 중 ${Math.round(index / chunks * 100)}%` : "받는 중…";
+      const r = await api("audio_chunk", {id: job.id, index});
+      chunks = r.chunks;
+      parts.push(Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0)));
+    }
+    save(job.title, ".mp3", new Blob(parts), "audio/mpeg");
+  } catch (err) { alert(err.message); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+
 function save(title, ext, text, type) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], {type: `${type};charset=utf-8`}));
@@ -1424,10 +1442,12 @@ async function view(id) {
       <div class="viewer-tools">${r.job.original_url ? `<a class="btn small" href="${esc(r.job.original_url)}" target="_blank" rel="noopener" title="구글 드라이브에 보관된 원본 영상">🎬 원본</a>` : ""}
       ${me?.role === "admin" ? `<button class="btn small" id="viewer-fix" title="틀린 단어를 드래그해서 고른 뒤 누르세요">📖 고칠 말 추가</button>` : ""}
       <button class="btn small" id="viewer-md">.md</button>
+      ${r.job.has_audio ? `<button class="btn small" id="viewer-mp3" title="소리만 담은 MP3 (약 1시간에 29MB)">🎧 .mp3</button>` : ""}
       ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">.${k}</button>`).join("") : ""}</div></div>
     <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
+  if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
