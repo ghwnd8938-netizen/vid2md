@@ -151,6 +151,12 @@
   .seg { display: inline-flex; background: var(--soft); border-radius: 11px; padding: 3px; gap: 2px; }
   .seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
     color: var(--muted); font-weight: 600; }
+  .seg button { white-space: nowrap; }
+  @media (max-width: 480px) { /* phones: the tabs go under the card title, full width */
+    .card-head:has(> .seg) { flex-wrap: wrap; }
+    .card-head > .seg { width: 100%; }
+    .card-head > .seg button { flex: 1; padding: 6px 4px; }
+  }
   .seg button[aria-pressed=true] { background: var(--bg); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 
   .drop { border: 1.5px dashed var(--line-strong); border-radius: 14px; padding: 26px 16px; text-align: center; cursor: pointer;
@@ -389,7 +395,7 @@
     <section class="card">
       <div class="card-head"><h2>새 변환</h2>
         <div class="seg" role="group">
-          <button aria-pressed="true" data-tab="file" type="button">파일</button><button aria-pressed="false" data-tab="url" type="button">YouTube</button><button aria-pressed="false" data-tab="rec" type="button">🎙 녹음</button>
+          <button aria-pressed="true" data-tab="file" type="button">파일</button><button aria-pressed="false" data-tab="url" type="button">YouTube</button><button aria-pressed="false" data-tab="drive" type="button">드라이브</button><button aria-pressed="false" data-tab="rec" type="button">🎙 녹음</button>
         </div>
       </div>
       <form id="new-form" class="stack">
@@ -404,6 +410,12 @@
         </div>
         <div data-pane="url" hidden>
           <input class="field" type="text" id="url" placeholder="https://www.youtube.com/watch?v=...">
+        </div>
+        <div data-pane="drive" hidden>
+          <input class="field" type="text" id="drive-url" placeholder="구글 드라이브 파일 링크 · https://drive.google.com/file/d/…">
+          <div class="muted rec-note">큰 파일(2GB 넘는 영상 등)은 구글 드라이브에 먼저 올리고, 드라이브에서 <b>공유 → 링크 복사</b>한 주소를 넣으세요.
+            크기 제한이 없고, 파일은 드라이브에 그대로 두고 읽기만 해요(작업을 지워도 파일은 남아요).
+            관리자 계정의 드라이브 파일이거나, 관리자와 공유된 파일이어야 해요.</div>
         </div>
         <div data-pane="rec" hidden>
           <div class="rec" id="rec">
@@ -934,11 +946,15 @@ $("#new-form").onsubmit = async (e) => {
                    denoise: $("#opt-denoise").checked, glossary: $("#glossary").value};
   $("#submit").disabled = true;
   try {
-    if (tab === "url") {
+    if (tab === "drive") {
+      await api("add_drive", {url: $("#drive-url").value, title, prompt, options, folder: currentFolder()?.id || ""});
+      $("#drive-url").value = ""; $("#title").value = "";
+    } else if (tab === "url") {
       await api("add_link", {url: $("#url").value, title, prompt, force_whisper: $("#force").checked, options, folder: currentFolder()?.id || ""});
       $("#url").value = ""; $("#title").value = "";
     } else {
       if (!picked) throw new Error("파일을 고르세요.");
+      if (picked.size > 2 * 1024 ** 3) throw new Error("바로 올리기는 2GB까지예요. 이 파일은 구글 드라이브에 올린 뒤 '드라이브' 탭에 링크를 넣어 주세요.");
       await upload(picked, prompt, options, title); pick(null); $("#file").value = ""; $("#title").value = "";
     }
     refresh();
