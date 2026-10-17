@@ -402,7 +402,7 @@
         <div data-pane="file">
           <div class="drop" id="drop">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg></div>
-            <b>파일을 끌어다 놓거나 눌러서 선택</b><br><span class="muted">영상 · 음성 · 자막 (최대 2GB)</span>
+            <b>파일을 끌어다 놓거나 눌러서 선택</b><br><span class="muted">영상 · 음성 · 자막 · 큰 파일은 구글 드라이브로 바로 올라가요</span>
             <strong id="picked"></strong>
           </div>
           <input type="file" id="file" hidden
@@ -954,7 +954,6 @@ $("#new-form").onsubmit = async (e) => {
       $("#url").value = ""; $("#title").value = "";
     } else {
       if (!picked) throw new Error("파일을 고르세요.");
-      if (picked.size > 2 * 1024 ** 3) throw new Error("바로 올리기는 2GB까지예요. 이 파일은 구글 드라이브에 올린 뒤 '드라이브' 탭에 링크를 넣어 주세요.");
       await upload(picked, prompt, options, title); pick(null); $("#file").value = ""; $("#title").value = "";
     }
     refresh();
@@ -1114,7 +1113,67 @@ async function upload(file, prompt, options, title) {
   try { return await uploadFile(file, prompt, options, title); } finally { uploading--; markActive(true); }
 }
 
+/* Big files go straight to Google Drive: the Apps Script opens a resumable upload session with the
+   owner's account and the browser sends the file to it in 64 MB pieces (no size limit, no detour).
+   If this browser is not allowed to (the very first piece fails), it falls back to the pieces-through-
+   the-script way, which works up to 2 GB. */
+const DIRECT_MIN_BYTES = 200 * 1024 * 1024, DIRECT_CHUNK = 64 * 1024 * 1024, CLASSIC_MAX_BYTES = 2 * 1024 ** 3;
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+async function uploadDirect(file, prompt, options, title) {
+  const start = await api("direct_start", {name: file.name, size: file.size, mime: file.type || "application/octet-stream",
+                                           origin: location.origin, title, prompt, options, folder: currentFolder()?.id || ""});
+  const total = file.size, mb = (n) => (n / 1048576) | 0;
+  const show = (done) => {
+    $("#upload-state").hidden = false;
+    $("#upload-state .bar i").style.width = `${done / total * 100}%`;
+    $("#upload-text").textContent = `구글 드라이브로 올리는 중 ${mb(done)}MB / ${mb(total)}MB (${Math.floor(done / total * 100)}%)`;
+  };
+  let offset = 0, fileId = "", failures = 0;
+  show(0);
+  while (offset < total) {
+    const end = Math.min(total, offset + DIRECT_CHUNK);
+    let res = null;
+    try {
+      res = await fetch(start.session, {method: "PUT", headers: {"Content-Range": `bytes ${offset}-${end - 1}/${total}`},
+                                        body: file.slice(offset, end)});
+    } catch (err) {
+      if (offset === 0 && failures === 0) throw Object.assign(new Error("direct upload blocked"), {blocked: true, id: start.id});
+    }
+    if (res && (res.status === 308 || res.ok)) {
+      failures = 0;
+      if (res.ok) { try { fileId = (await res.json()).id || ""; } catch {} offset = total; } else offset = end;
+      show(offset);
+      continue;
+    }
+    if (res && res.status < 500 && res.status !== 429) throw new Error(`구글 드라이브가 업로드를 받지 않았어요 (${res.status}). 다시 올려 주세요.`);
+    if (++failures > 6) throw new Error("구글 드라이브 연결이 계속 끊겨요. 잠시 뒤 다시 올려 주세요.");
+    $("#upload-text").textContent = "연결을 기다리는 중… (이어서 올려요)";
+    await wait(2000 * failures);
+    // Ask Google how much it already has, when it lets the page read the answer; else resend this piece.
+    try {
+      const q = await fetch(start.session, {method: "PUT", headers: {"Content-Range": `bytes */${total}`}});
+      if (q.ok) { try { fileId = (await q.json()).id || ""; } catch {} offset = total; }
+      const range = q.headers.get("Range");
+      if (q.status === 308 && range) offset = Number(range.split("-")[1]) + 1;
+    } catch {}
+  }
+  $("#upload-text").textContent = "확인하는 중…";
+  await api("direct_finish", {id: start.id, file_id: fileId});
+}
+
 async function uploadFile(file, prompt, options, title) {
+  if (file.size > DIRECT_MIN_BYTES && store.get("vid2md.direct") !== "blocked") {
+    try { return await uploadDirect(file, prompt, options, title); }
+    catch (err) {
+      if (!err.blocked) throw err;
+      store.set("vid2md.direct", "blocked"); // this browser cannot; do not try again here
+      await api("delete_job", {id: err.id}).catch(() => {});
+    }
+  }
+  if (file.size > CLASSIC_MAX_BYTES) {
+    throw new Error("이 브라우저에서는 2GB 넘는 파일을 바로 올릴 수 없어요. 구글 드라이브에 올린 뒤 '드라이브' 탭에 링크를 넣어 주세요.");
+  }
   const start = await api("upload_start", {name: file.name, size: file.size, title, prompt, options, folder: currentFolder()?.id || ""});
   const size = start.chunk_bytes, total = start.chunks;
   let next = 0, done = 0;
