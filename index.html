@@ -207,15 +207,15 @@
   @keyframes blink { 50% { opacity: .2; } }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
-  .folders { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; margin: -4px 0 2px; scrollbar-width: none; }
+  .folders { position: relative; display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; margin: -4px 0 2px; scrollbar-width: none; }
   .folders::-webkit-scrollbar { display: none; }
   /* More chips beyond an edge: that edge fades out. A mouse drags the row (touch scrolls it natively). */
-  .folders.more-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
-    mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); }
-  .folders.more-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 36px);
-    mask-image: linear-gradient(90deg, transparent, #000 36px); }
-  .folders.more-left.more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 36px, #000 calc(100% - 36px), transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+  .folders.more-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+  .folders.more-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px);
+    mask-image: linear-gradient(90deg, transparent, #000 24px); }
+  .folders.more-left.more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
   .folders.dragging { cursor: grabbing; user-select: none; }
   .folders.dragging .fchip { cursor: grabbing; }
   .fchip { flex: none; border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 99px;
@@ -1322,7 +1322,17 @@ async function refresh() {
   });
   row.addEventListener("scroll", edges, {passive: true});
   addEventListener("resize", edges);
-  row.updateEdges = edges;
+  // Bring the chosen chip into view clear of the faded edges, moving the row as little as possible
+  // (at the start when it fits there).
+  row.showChosen = () => {
+    const chip = row.querySelector("[aria-pressed=true]");
+    if (chip) {
+      const fade = 28, left = chip.offsetLeft, right = left + chip.offsetWidth;
+      if (right > row.scrollLeft + row.clientWidth - fade) row.scrollLeft = right - row.clientWidth + fade;
+      else if (left < row.scrollLeft + fade) row.scrollLeft = Math.max(0, left - fade);
+    }
+    edges();
+  };
 })();
 
 function renderFolders() {
@@ -1347,8 +1357,7 @@ function renderFolders() {
     };
   });
   $("#folder-add").onclick = addFolder;
-  $("#folders .fchip[aria-pressed=true]")?.scrollIntoView({block: "nearest", inline: "nearest"});
-  $("#folders").updateEdges();
+  $("#folders").showChosen();
   const cur = currentFolder();
   $("#folder-tools").hidden = !cur;
   $("#folder-current").textContent = cur ? `📁 ${cur.name}` : "";
