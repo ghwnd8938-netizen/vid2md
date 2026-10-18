@@ -136,14 +136,15 @@
     font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
   main.app { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; display: grid; gap: 24px;
     grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: start; }
-  .col { display: grid; gap: 20px; align-content: start; }
+  /* minmax(0, …): a column never grows to fit a long row inside it (the folder chips), it scrolls that row instead. */
+  .col { display: grid; gap: 20px; align-content: start; grid-template-columns: minmax(0, 1fr); }
   .card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
   .card-head h2 { font-size: 17px; margin: 0; color: var(--ink); font-weight: 700; letter-spacing: -0.03em; }
   .stack { display: grid; gap: 12px; }
   .empty { color: var(--faint); font-size: 14px; padding: 18px 0; text-align: center; }
   @media (max-width: 920px) {
-    main.app { grid-template-columns: 1fr; padding: 18px 16px 64px; gap: 16px; }
+    main.app { grid-template-columns: minmax(0, 1fr); padding: 18px 16px 64px; gap: 16px; }
     .top-in { padding: 10px 16px; }
     .who-name { display: none; }
   }
@@ -208,6 +209,15 @@
 
   .folders { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; margin: -4px 0 2px; scrollbar-width: none; }
   .folders::-webkit-scrollbar { display: none; }
+  /* More chips beyond an edge: that edge fades out. A mouse drags the row (touch scrolls it natively). */
+  .folders.more-right { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); }
+  .folders.more-left { -webkit-mask-image: linear-gradient(90deg, transparent, #000 36px);
+    mask-image: linear-gradient(90deg, transparent, #000 36px); }
+  .folders.more-left.more-right { -webkit-mask-image: linear-gradient(90deg, transparent, #000 36px, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+  .folders.dragging { cursor: grabbing; user-select: none; }
+  .folders.dragging .fchip { cursor: grabbing; }
   .fchip { flex: none; border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 99px;
     padding: 6px 12px; font: 600 13px/1.2 var(--font); cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
     transition: background .15s, border-color .15s, color .15s; }
@@ -1275,6 +1285,46 @@ async function refresh() {
   if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) pollTimer = setTimeout(refresh, 8000);
 }
 
+/* The folder row scrolls sideways with a mouse too: drag it, or turn the wheel. While a job card is dragged
+   over it, holding near an edge scrolls that way. */
+(function folderRowScrolling() {
+  const row = $("#folders");
+  const edges = () => {
+    row.classList.toggle("more-left", row.scrollLeft > 2);
+    row.classList.toggle("more-right", row.scrollLeft + row.clientWidth < row.scrollWidth - 2);
+  };
+  let drag = null, moved = false;
+  row.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || row.scrollWidth <= row.clientWidth) return;
+    drag = {x: e.clientX, left: row.scrollLeft, id: e.pointerId}; moved = false;
+  });
+  row.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x;
+    if (!moved && Math.abs(dx) < 5) return; // a click stays a click
+    if (!moved) { moved = true; row.setPointerCapture(drag.id); row.classList.add("dragging"); }
+    row.scrollLeft = drag.left - dx;
+  });
+  const end = () => { drag = null; row.classList.remove("dragging"); };
+  row.addEventListener("pointerup", end);
+  row.addEventListener("pointercancel", end);
+  // A drag that moved the row is not a click on the chip under the mouse.
+  row.addEventListener("click", (e) => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
+  row.addEventListener("wheel", (e) => {
+    if (row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    row.scrollLeft += e.deltaY;
+  }, {passive: false});
+  row.addEventListener("dragover", (e) => {
+    const box = row.getBoundingClientRect();
+    if (e.clientX < box.left + 40) row.scrollLeft -= 12;
+    else if (e.clientX > box.right - 40) row.scrollLeft += 12;
+  });
+  row.addEventListener("scroll", edges, {passive: true});
+  addEventListener("resize", edges);
+  row.updateEdges = edges;
+})();
+
 function renderFolders() {
   if (folder !== "*" && (folder !== "" || !folders.length) && !currentFolder()) folder = "*";
   const count = (id) => jobs.filter((j) => (j.collection || "") === id).length;
@@ -1297,6 +1347,8 @@ function renderFolders() {
     };
   });
   $("#folder-add").onclick = addFolder;
+  $("#folders .fchip[aria-pressed=true]")?.scrollIntoView({block: "nearest", inline: "nearest"});
+  $("#folders").updateEdges();
   const cur = currentFolder();
   $("#folder-tools").hidden = !cur;
   $("#folder-current").textContent = cur ? `📁 ${cur.name}` : "";
