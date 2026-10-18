@@ -699,7 +699,9 @@ const familyOf = (g, groups = dictGroups) => {
   const m = /^(.+) \*$/.exec(g || "");
   return m ? groups.filter((x) => x === m[1] || x.startsWith(m[1] + " ")) : null;
 };
+const AUTO = "*auto*"; // the worker listens to a few parts first and picks words from the whole dictionary
 const packLabel = (g) => {
+  if (g === AUTO) return "🤖 자동 선택";
   const family = familyOf(g);
   if (family) return `${family.some((x) => privateGroups.includes(x)) ? "🔒 " : ""}${g.slice(0, -2)} 전체${family.length ? ` (${family.length}묶음)` : ""}`;
   return privateGroups.includes(g) ? `🔒 ${g}` : g;
@@ -792,15 +794,18 @@ async function loadDict() {
     box.innerHTML = `<div class="empty">${r.can_edit ? "비어 있어요. 위에서 추가하거나 붙여넣어 보세요." : "아직 비어 있어요. 관리자에게 추가를 부탁하세요."}</div>`;
   }
 }
+$("#glossary").addEventListener("change", (e) => { e.target.dataset.touched = "1"; });
 function fillGroups(groups) {
   const keep = $("#dict-group").value;
   $("#dict-group").innerHTML = `<option value="">공통 (모든 영상)</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}</option>`).join("")
     + `<option value="__new">+ 새 묶음 만들기…</option>`;
   $("#dict-group").value = groups.includes(dictTab) ? dictTab : (groups.includes(keep) ? keep : "");
   const pick = $("#glossary"), chosen = pick.value;
-  const all = [...families(groups), ...groups];
-  pick.innerHTML = `<option value="">용어 묶음 없음</option>` + all.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}</option>`).join("");
-  pick.value = all.includes(chosen) ? chosen : "";
+  const all = [AUTO, ...families(groups), ...groups];
+  pick.innerHTML = all.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}${g === AUTO ? " (추천)" : ""}</option>`).join("")
+    + `<option value="">용어 묶음 없음</option>`;
+  // "자동 선택" unless the person picked something else in this visit.
+  pick.value = pick.dataset.touched && (all.includes(chosen) || chosen === "") ? chosen : AUTO;
   pick.hidden = !groups.length;
 }
 $("#dict-group").onchange = async () => {
@@ -1493,7 +1498,8 @@ async function view(id) {
   if (location.hash !== `#job=${id}`) history.replaceState(null, "", `#job=${id}`);
   const [m, body] = splitFrontMatter(r.markdown || "");
   const facts = [METHOD[m.method] || m.method, m.confidence === "observed" ? "사람이 올린 자막" : m.confidence ? "음성 인식 추정" : "",
-                 m.duration && `길이 ${m.duration}`, m.speakers && `화자 ${m.speakers}명`, m.provider].filter(Boolean).map((v) => `<span>${esc(v)}</span>`).join("");
+                 m.duration && `길이 ${m.duration}`, m.speakers && `화자 ${m.speakers}명`, m.provider].filter(Boolean).map((v) => `<span>${esc(v)}</span>`).join("")
+    + (m.hints ? `<span title="${esc(m.hints)}">🤖 자동 힌트 ${String(m.hints).split(", ").length}개</span>` : "");
   const limits = (m.limitations || []).map((l) => `<li>${esc(l)}</li>`).join("");
   let segs = null;
   try { segs = r.segments ? JSON.parse(r.segments) : null; } catch {}
