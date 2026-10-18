@@ -460,7 +460,7 @@
         <label class="toggle" id="force-wrap" hidden><input type="checkbox" id="force">
           <span class="t">자막이 있어도 음성 인식<small>YouTube 자막이 부정확할 때</small></span></label>
         <label class="toggle"><input type="checkbox" id="opt-external">
-          <span class="t">외부 서버에서 처리해도 돼요<small>더 빨리 끝나요 · 영상은 안 가고 음성만 가요 (처리 뒤 바로 지워져요)</small></span></label>
+          <span class="t">외부 서버에서 처리해도 돼요<small>더 빨리 끝나요 · 영상은 안 가고 음성만 가요 (처리 뒤 바로 지워져요) · 끄면 다음에도 꺼져 있어요</small></span></label>
         <details class="opts" id="opts">
           <summary>추가 기능</summary>
           <div class="stack">
@@ -848,6 +848,7 @@ async function loadDict() {
   }
 }
 $("#glossary").addEventListener("change", (e) => { e.target.dataset.touched = "1"; });
+$("#opt-external").addEventListener("change", (e) => store.set("vid2md.external", e.target.checked ? null : "off"));
 function fillGroups(groups) {
   const keep = $("#dict-group").value;
   $("#dict-group").innerHTML = `<option value="">공통 (모든 영상)</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}</option>`).join("")
@@ -924,9 +925,9 @@ async function enter() {
   loadGroups();
   $("#who-admin").hidden = me.role !== "admin";
   $("#open-users").hidden = me.role !== "admin";
-  // Friends' jobs may go to the external server by default; the admin's stay inside unless ticked.
-  // (A private glossary pack keeps a job inside either way; the backend checks that.)
-  $("#opt-external").checked = me.role !== "admin";
+  // On unless this browser last chose otherwise. (A private glossary pack keeps a job inside either way; the
+  // backend checks that.)
+  $("#opt-external").checked = store.get("vid2md.external") !== "off";
   refresh();
   if (me.role === "admin") countPending();
   const m = location.hash.match(/job=([\w-]+)/);
