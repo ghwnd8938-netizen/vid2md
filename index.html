@@ -82,6 +82,9 @@
   .tg-btn:disabled { opacity: .6; cursor: default; }
   .tg-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(42,171,238,.3); }
   .tg-btn svg { width: 22px; height: 22px; }
+  a.tg-btn { text-decoration: none; }
+  .btn.tg-alt { width: 100%; margin-top: 4px; color: var(--tg); font-weight: 600; }
+  .btn.tg-alt:hover { color: var(--tg); }
   .signin-sub { text-align: center; font-size: 13px; color: var(--muted); margin: 10px 0 16px; }
   /* Fallback: Telegram's own button. Its frame may paint a dark backdrop in dark mode; clip it to the button. */
   #widget { min-height: 44px; display: flex; justify-content: center; }
@@ -380,8 +383,18 @@
             <span>텔레그램으로 로그인</span></button>
           <div id="widget" hidden></div>
           <div class="signin-sub">누르면 텔레그램 창이 열려요. <b>확인</b>만 누르면 끝!</div>
+          <button class="btn ghost tg-alt" id="tg-app-login" type="button">다른 계정으로 · 텔레그램 앱에서 로그인</button>
+          <div class="signin-sub">위 버튼은 이 브라우저가 기억한 계정으로 바로 들어가요.<br>다른 계정은 텔레그램 앱에서 로그인하세요.</div>
           <div class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
             <span>초대받은 계정만 들어올 수 있어요. 처음이면 관리자가 허용하는 즉시 자동으로 들어가집니다.</span></div>
+        </div>
+        <div id="login-app" class="wait" hidden>
+          <h2>텔레그램 앱에서 확인해 주세요</h2>
+          <p>아래 버튼으로 봇 대화를 열고 <b>시작</b> → <b>✅ 로그인</b>을 누르세요.<br>
+            누르면 이 화면이 자동으로 넘어가요. (5분 안에)</p>
+          <a class="tg-btn" id="app-open" target="_blank" rel="noopener">텔레그램 열기</a>
+          <p style="margin-top:12px">다른 계정으로 들어가려면 앱에서 먼저 계정을 바꾼 뒤 여세요.</p>
+          <button class="btn small ghost" id="app-cancel" type="button">돌아가기</button>
         </div>
         <div id="login-wait" class="wait" hidden>
           <div class="ring"><span class="avatar" id="wait-avatar"></span></div>
@@ -605,9 +618,9 @@ async function api(action, params = {}) {
 
 /* ---------- login ---------- */
 function showLogin() {
-  clearTimeout(pollTimer);
+  clearTimeout(pollTimer); appLoginStop();
   $("#app").hidden = true; $("#who").hidden = true; $("#login").hidden = false;
-  $("#login-idle").hidden = false; $("#login-wait").hidden = true;
+  $("#login-idle").hidden = false; $("#login-wait").hidden = true; $("#login-app").hidden = true;
   prepareLogin();
 }
 
@@ -664,6 +677,43 @@ function showTelegramWidget() {
                             requestAccess: "write", onauth: "onTelegramAuth(user)"});
   $("#widget").appendChild(s);
 }
+/* Sign-in through the Telegram app. The popup above always comes back as the account this browser signed in to
+   Telegram with (Telegram offers no way to sign that out from here), so this lets a person pick the account in the app:
+   the bot asks them to confirm, and the check below then signs in as whoever pressed ✅. */
+let appTimer = null, appRun = 0;
+function appLoginStop() { clearTimeout(appTimer); appRun++; }
+$("#tg-app-login").onclick = async () => {
+  $("#login-error").textContent = "";
+  const run = ++appRun;
+  let start;
+  try { start = await api("app_login_start"); } catch (err) { $("#login-error").textContent = err.message; return; }
+  if (run !== appRun) return;
+  $("#app-open").href = start.link;
+  $("#login-idle").hidden = true; $("#login-app").hidden = false;
+  const claim = new URLSearchParams(location.search).get("claim") || undefined;
+  const until = Date.now() + start.seconds * 1000;
+  const check = async () => {
+    if (run !== appRun) return;
+    let r;
+    try { r = await api("app_login_check", {code: start.code, claim}); }
+    catch (err) {
+      if (run !== appRun) return;
+      if (err.code === "login_expired" || Date.now() > until) { showLogin(); $("#login-error").textContent = "시간이 지났어요. 다시 눌러 주세요."; return; }
+      appTimer = setTimeout(check, 5000); // a passing network error: keep trying
+      return;
+    }
+    if (run !== appRun) return;
+    if (r.status === "open") { appTimer = setTimeout(check, 2500); return; }
+    if (claim) history.replaceState(null, "", location.pathname + location.hash);
+    if (r.status === "approved") return handleLogin(r);
+    showLogin();
+    $("#login-error").textContent = r.status === "denied" ? "관리자가 접근을 허용하지 않았습니다."
+      : "관리자에게 허용 요청을 보냈어요. 허용되면 텔레그램으로 알려드려요. 그때 다시 로그인해 주세요.";
+  };
+  appTimer = setTimeout(check, 2500);
+};
+$("#app-cancel").onclick = () => showLogin();
+
 function signOut() { token = null; store.set("vid2md.token", null); me = null; showLogin(); }
 $("#logout").onclick = signOut;
 
