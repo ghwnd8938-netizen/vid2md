@@ -320,6 +320,26 @@
   .dict-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
   .dict-tabs button { border: 1px solid var(--line); background: var(--bg); border-radius: 99px; padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
   .dict-tabs button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .editor { display: grid; gap: 10px; }
+  .ed-bar { position: sticky; top: 64px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    background: var(--bg); padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
+  .ed-bar .spacer { flex: 1; }
+  .ed-time { font: 600 13px/1 var(--font); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; }
+  .ed-seek { height: 6px; background: var(--soft); border-radius: 99px; cursor: pointer; overflow: hidden; }
+  .ed-seek i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .ed-note { font-size: 12.5px; color: var(--muted); }
+  .ed-row { display: grid; grid-template-columns: 68px 1fr; gap: 8px; padding: 6px 6px; border-radius: 10px; align-items: start; }
+  .ed-row.now { background: var(--accent-soft); }
+  .ed-row.edited .ed-txt { box-shadow: inset 3px 0 0 var(--warn); background: var(--warn-soft); }
+  .ed-t { border: 0; background: transparent; cursor: pointer; font: 600 12px/1.9 var(--font); font-variant-numeric: tabular-nums;
+    color: var(--accent-deep); text-align: left; padding: 0 4px; border-radius: 6px; }
+  .ed-t:hover { background: var(--accent); color: #fff; }
+  .ed-txt { outline: none; padding: 2px 8px; border-radius: 8px; line-height: 1.75; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ed-txt:focus { background: var(--bg); box-shadow: 0 0 0 2px rgba(255,90,54,.35); }
+  .sugg { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .sugg b { color: var(--ink); }
+  .sugg .meta { font-size: 12px; color: var(--muted); }
+  .sugg .actions select { max-width: 130px; }
   .hint-note { font-size: 12.5px; color: var(--muted); background: var(--soft); border-radius: 10px; padding: 8px 12px; margin: 4px 0 8px; line-height: 1.5; }
   .hint-note.full { color: var(--warn); background: var(--warn-soft); }
   .term-chip.over { opacity: .45; }
@@ -710,6 +730,36 @@ function families(groups) {
   const firsts = groups.map((g) => g.split(" ")[0]);
   return [...new Set(firsts)].filter((f) => groups.filter((g) => g === f || g.startsWith(f + " ")).length >= 2).map((f) => `${f} *`);
 }
+const SUGG = "__suggestions";
+/* Corrections made in 들으며 고치기, most frequent first; the admin adds them to a pack or dismisses them. */
+async function renderSuggestions() {
+  const box = $("#dict-list");
+  box.innerHTML = '<div class="empty">불러오는 중…</div>';
+  let list;
+  try { list = (await api("dict_suggestions")).suggestions; } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">아직 추천이 없어요. 전사본을 ✏️ 들으며 고치면, 고친 말이 여기에 모여요.</div>';
+    return;
+  }
+  const packs = [["", "공통 (모든 영상)"], ...dictGroups.map((g) => [g, packLabel(g)])];
+  const last = store.get("vid2md.suggPack") || "";
+  box.innerHTML = `<div class="hint-note">들으며 고친 말 중 반복된 것부터 보여요. <b>추가</b>하면 고쳐쓰기 규칙이 되고, 다음 전사본부터 자동으로 고쳐져요.
+    ⚠ 표시는 짧아서 다른 곳의 맞는 말까지 바꿀 수 있는 것이에요.</div>` + list.map((x) => `<div class="sugg" data-id="${esc(x.id)}">
+      <div><b>${esc(x.wrong)}</b> → <b>${esc(x.right)}</b>${x.risky ? ' <span class="badge" title="짧은 말이라 맞는 곳까지 바뀔 수 있어요">⚠ 짧은 말</span>' : ""}
+        <div class="meta">${x.count}번 고침 · 작업 ${x.jobs}개</div></div>
+      <div class="actions"><select class="move">${packs.map(([g, label]) => `<option value="${esc(g)}"${g === last ? " selected" : ""}>${esc(label)}</option>`).join("")}</select>
+        <button class="btn small accent" data-act="accept">추가</button><button class="btn small ghost" data-act="dismiss">무시</button></div></div>`).join("");
+  box.querySelectorAll(".sugg").forEach((el) => el.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => busy(b, "…", async () => {
+    const group = el.querySelector("select").value;
+    try {
+      await api("suggestion_decide", {id: el.dataset.id, accept: b.dataset.act === "accept", group});
+      if (b.dataset.act === "accept") store.set("vid2md.suggPack", group);
+      el.remove();
+      if (!box.querySelector(".sugg")) renderSuggestions();
+    } catch (err) { alert(err.message); }
+  })));
+}
+
 async function loadDict() {
   let r;
   try { r = await api("dictionary"); } catch (err) { $("#dict-list").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
@@ -723,11 +773,12 @@ async function loadDict() {
   dictGroups = r.groups || [];
   privateGroups = r.private_groups || [];
   fillGroups(dictGroups);
-  if (dictTab && dictTab !== "*" && !dictGroups.includes(dictTab)) dictTab = "";
-  // tabs: 전체 · 공통 · each pack
-  const tabs = [["*", "전체"], ["", "공통"], ...dictGroups.map((g) => [g, packLabel(g)])];
+  if (dictTab && dictTab !== "*" && dictTab !== SUGG && !dictGroups.includes(dictTab)) dictTab = "";
+  // tabs: (admin) 추천 · 전체 · 공통 · each pack
+  const tabs = [...(r.can_edit ? [[SUGG, "💡 추천"]] : []), ["*", "전체"], ["", "공통"], ...dictGroups.map((g) => [g, packLabel(g)])];
   $("#dict-tabs").innerHTML = tabs.map(([k, label]) => `<button type="button" data-tab="${esc(k)}" aria-pressed="${k === (dictTab || "")}">${esc(label)}</button>`).join("");
   $("#dict-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => { dictTab = b.dataset.tab; loadDict(); });
+  if (dictTab === SUGG) return renderSuggestions();
   const rows = r.rules.filter((x) => dictTab === "*" || x.group === (dictTab || ""));
   const box = $("#dict-list"); box.innerHTML = "";
   const remove = (id) => async () => { try { await api("dict_remove", {id}); loadDict(); } catch (err) { alert(err.message); } };
@@ -1361,22 +1412,137 @@ async function downloadMd(id) {
 }
 
 /* The MP3 comes from the Apps Script in 4 MB pieces (its answers are limited in size); join and save. */
+const mp3Cache = new Map(); // job id -> Blob, so listening and downloading load it once
+async function fetchMp3(job, onProgress) {
+  if (mp3Cache.has(job.id)) return mp3Cache.get(job.id);
+  const parts = [];
+  for (let index = 0, chunks = 1; index < chunks; index++) {
+    onProgress(chunks > 1 ? index / chunks : 0);
+    const r = await api("audio_chunk", {id: job.id, index});
+    chunks = r.chunks;
+    parts.push(Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0)));
+  }
+  const blob = new Blob(parts, {type: "audio/mpeg"});
+  mp3Cache.set(job.id, blob);
+  return blob;
+}
+
 async function downloadMp3(job, btn) {
   if (btn.disabled) return;
   const label = btn.textContent;
   btn.disabled = true;
   try {
-    const parts = [];
-    for (let index = 0, chunks = 1; index < chunks; index++) {
-      btn.textContent = chunks > 1 ? `받는 중 ${Math.round(index / chunks * 100)}%` : "받는 중…";
-      const r = await api("audio_chunk", {id: job.id, index});
-      chunks = r.chunks;
-      parts.push(Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0)));
-    }
-    save(job.title, ".mp3", new Blob(parts), "audio/mpeg");
+    const blob = await fetchMp3(job, (f) => { btn.textContent = f ? `받는 중 ${Math.round(f * 100)}%` : "받는 중…"; });
+    save(job.title, ".mp3", blob, "audio/mpeg");
   } catch (err) { alert(err.message); }
   finally { btn.disabled = false; btn.textContent = label; }
 }
+
+/* ---------- 들으며 고치기: the MP3 next to the timed lines; edit a line in place, save, and the
+   corrections are compared with the machine's words on the server (suggestions for the dictionary). */
+let editorDirty = false;
+function openEditor(job, segs) {
+  const rows = segs.map((row, i) => ({i, start: Number(row[0]) || 0, end: Number(row[1]) || 0, text: String(row[2] || ""), saved: String(row[2] || "")}));
+  const starts = rows.map((r) => r.start);
+  editorDirty = false;
+  $("#viewer").innerHTML = `<div class="editor">
+    <div class="card-head" style="margin-bottom:0"><span class="badge accent">✏️ 들으며 고치기</span><span class="muted" style="overflow-wrap:anywhere">${esc(job.title)}</span></div>
+    <div class="ed-bar">
+      <button class="btn small accent" id="ed-play" disabled>▶ 재생</button>
+      <span class="ed-time" id="ed-time">음성 준비 중…</span>
+      <select class="move" id="ed-rate" title="재생 속도"><option value="1">1배</option><option value="1.25">1.25배</option><option value="1.5">1.5배</option><option value="2">2배</option></select>
+      <label class="muted" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="ed-follow" checked>따라가기</label>
+      <span class="spacer"></span>
+      <span class="muted" id="ed-status" style="font-size:12.5px"></span>
+      <button class="btn small primary" id="ed-save" disabled style="padding:6px 14px;font-size:13px">저장</button>
+      <button class="btn small ghost" id="ed-close">닫기</button>
+    </div>
+    <div class="ed-seek" id="ed-seek"><i></i></div>
+    <div class="ed-note">문장을 눌러 바로 고치세요 · 시간을 누르면 그 부분부터 들려요 · <b>Esc</b>: 재생/멈춤(2초 되감기) · 고친 줄은 노란색으로 표시돼요</div>
+    <audio id="ed-audio" preload="auto"></audio>
+    <div id="ed-rows"></div></div>`;
+  const box = $("#ed-rows"), audio = $("#ed-audio");
+  box.innerHTML = rows.map((r) => `<div class="ed-row" data-i="${r.i}"><button class="ed-t" type="button" data-i="${r.i}">${fmtTime(r.start * 1000)}</button>
+    <div class="ed-txt" spellcheck="false">${esc(r.text)}</div></div>`).join("");
+  const rowEls = [...box.querySelectorAll(".ed-row")];
+  const edited = () => rows.filter((r) => r.text !== r.saved);
+  const markDirty = () => {
+    const n = edited().length;
+    editorDirty = n > 0;
+    $("#ed-save").disabled = !n;
+    $("#ed-status").textContent = n ? `고친 줄 ${n}개 · 저장 전` : "";
+  };
+  rowEls.forEach((el) => {
+    const txt = el.querySelector(".ed-txt");
+    txt.contentEditable = "plaintext-only";
+    if (txt.contentEditable !== "plaintext-only") txt.contentEditable = "true"; // older browsers
+    txt.addEventListener("input", () => {
+      const r = rows[Number(el.dataset.i)];
+      r.text = txt.innerText.replace(/\s+/g, " ").trim();
+      el.classList.toggle("edited", r.text !== r.saved);
+      markDirty();
+    });
+    txt.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); txt.blur(); } }); // one line per segment
+    txt.addEventListener("paste", (e) => { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData.getData("text") || "").replace(/\s+/g, " ")); });
+  });
+  // Playback
+  let current = -1;
+  const at = (t) => { let lo = 0, hi = starts.length - 1, k = -1; while (lo <= hi) { const mid = (lo + hi) >> 1; if (starts[mid] <= t) { k = mid; lo = mid + 1; } else hi = mid - 1; } return k; };
+  const play = (t) => { if (!audio.src) return; if (t != null) audio.currentTime = Math.max(0, t); audio.play(); };
+  const toggle = () => { if (!audio.src) return; if (audio.paused) play(audio.currentTime - 2); else audio.pause(); };
+  box.querySelectorAll(".ed-t").forEach((b) => b.onclick = () => play(rows[Number(b.dataset.i)].start));
+  $("#ed-play").onclick = toggle;
+  $("#ed-rate").onchange = (e) => { audio.playbackRate = Number(e.target.value); };
+  $("#ed-seek").onclick = (e) => { if (!audio.duration) return; const rect = e.currentTarget.getBoundingClientRect(); play((e.clientX - rect.left) / rect.width * audio.duration); };
+  audio.onplay = () => { $("#ed-play").textContent = "⏸ 멈춤"; };
+  audio.onpause = () => { $("#ed-play").textContent = "▶ 재생"; };
+  audio.ontimeupdate = () => {
+    const t = audio.currentTime;
+    $("#ed-time").textContent = `${fmtTime(t * 1000)} / ${fmtTime((audio.duration || 0) * 1000)}`;
+    $("#ed-seek i").style.width = `${audio.duration ? t / audio.duration * 100 : 0}%`;
+    const k = at(t);
+    if (k === current) return;
+    rowEls[current]?.classList.remove("now");
+    current = k;
+    const el = rowEls[k];
+    if (!el) return;
+    el.classList.add("now");
+    // Follow the voice, but never move the page while someone is typing.
+    if ($("#ed-follow").checked && !box.contains(document.activeElement)) el.scrollIntoView({block: "center", behavior: "smooth"});
+  };
+  const keys = (e) => { if (e.key === "Escape" && $("#ed-audio")) { e.preventDefault(); toggle(); } };
+  document.addEventListener("keydown", keys);
+  // The sound
+  if (job.has_audio) {
+    fetchMp3(job, (f) => { $("#ed-time").textContent = `음성 불러오는 중 ${Math.round(f * 100)}%`; })
+      .then((blob) => {
+        if (!document.body.contains(audio)) return;
+        audio.src = URL.createObjectURL(blob);
+        $("#ed-play").disabled = false;
+        $("#ed-time").textContent = "준비됐어요";
+      })
+      .catch((err) => { $("#ed-time").textContent = "음성을 불러오지 못했어요: " + err.message; });
+  } else {
+    $("#ed-time").textContent = "이 작업은 음성 파일이 없어요 (새로 변환한 작업부터 들을 수 있어요). 고치기는 할 수 있어요.";
+  }
+  // Save / close
+  $("#ed-save").onclick = () => busy($("#ed-save"), "저장 중…", async () => {
+    const changes = edited();
+    try {
+      const r = await api("save_edits", {id: job.id, edits: changes.map((x) => [x.i, x.text])});
+      changes.forEach((x) => { x.saved = x.text; rowEls[x.i].classList.remove("edited"); });
+      markDirty();
+      $("#ed-status").textContent = `저장했어요 · ${r.changed}줄` + (r.learned ? ` · 고쳐쓰기 추천 후보 ${r.learned}개` : "");
+    } catch (err) { alert(err.message); }
+  });
+  $("#ed-close").onclick = () => {
+    if (editorDirty && !confirm("저장하지 않은 고친 줄이 있어요. 닫을까요?")) return;
+    document.removeEventListener("keydown", keys);
+    audio.pause(); editorDirty = false;
+    view(job.id);
+  };
+}
+addEventListener("beforeunload", (e) => { if (editorDirty) { e.preventDefault(); e.returnValue = ""; } });
 
 function save(title, ext, text, type) {
   const a = document.createElement("a");
@@ -1506,6 +1672,7 @@ async function view(id) {
   $("#viewer").innerHTML = `<div class="card-head" style="margin-bottom:8px"><span class="badge accent">전사본</span>
       <div class="viewer-tools">${r.job.original_url ? `<a class="btn small" href="${esc(r.job.original_url)}" target="_blank" rel="noopener" title="구글 드라이브에 보관된 원본 영상">🎬 원본</a>` : ""}
       ${me?.role === "admin" ? `<button class="btn small" id="viewer-fix" title="틀린 단어를 드래그해서 고른 뒤 누르세요">📖 고칠 말 추가</button>` : ""}
+      ${segs && r.job.status === "done" && (me?.role === "admin" || r.job.owner === me?.id) ? `<button class="btn small accent" id="viewer-edit" title="음성을 들으면서 문장을 바로 고쳐요">✏️ 들으며 고치기</button>` : ""}
       <button class="btn small" id="viewer-md">.md</button>
       ${r.job.has_audio ? `<button class="btn small" id="viewer-mp3" title="소리만 담은 MP3 (약 1시간에 29MB)">🎧 .mp3</button>` : ""}
       ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">.${k}</button>`).join("") : ""}</div></div>
@@ -1513,6 +1680,7 @@ async function view(id) {
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
   if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
+  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs);
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
