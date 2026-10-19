@@ -348,6 +348,14 @@
     color: var(--accent-deep); text-align: left; padding: 0 4px; border-radius: 6px; }
   .ed-t:hover { background: var(--accent); color: #fff; }
   .ed-txt { outline: none; padding: 2px 8px; border-radius: 8px; line-height: 1.75; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ai-box { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg); }
+  .ai-box textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; font-size: 13px; padding: 8px; border-radius: 9px;
+    border: 1px solid var(--line-strong); background: var(--bg); color: var(--text); }
+  .ai-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .ai-c { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 6px 4px; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .ai-c s { color: var(--muted); }
+  .ai-c b { color: var(--ink); }
+  .ai-c .spacer { flex: 1; }
   .ed-txt:focus { background: var(--bg); box-shadow: 0 0 0 2px rgba(255,90,54,.35); }
   .sugg { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .sugg b { color: var(--ink); }
@@ -1558,7 +1566,7 @@ async function downloadMp3(job, btn) {
 /* ---------- 들으며 고치기: the MP3 next to the timed lines; edit a line in place, save, and the
    corrections are compared with the machine's words on the server (suggestions for the dictionary). */
 let editorDirty = false;
-function openEditor(job, segs) {
+function openEditor(job, segs, aiTerms) {
   const rows = segs.map((row, i) => ({i, start: Number(row[0]) || 0, end: Number(row[1]) || 0, text: String(row[2] || ""), saved: String(row[2] || "")}));
   const starts = rows.map((r) => r.start);
   editorDirty = false;
@@ -1569,6 +1577,7 @@ function openEditor(job, segs) {
       <span class="ed-time" id="ed-time">음성 준비 중…</span>
       <select class="move" id="ed-rate" title="재생 속도"><option value="1">1배</option><option value="1.25">1.25배</option><option value="1.5">1.5배</option><option value="2">2배</option></select>
       <label class="muted" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="ed-follow" checked>따라가기</label>
+      ${typeof aiTerms === "string" ? `<button class="btn small" id="ed-ai" type="button" title="강의 자료(PDF·PPT·텍스트)를 넣으면 잘못 받아쓴 용어 후보를 찾아 줘요">🤖 자료로 용어 후보</button>` : ""}
       <span class="spacer"></span>
       <span class="muted" id="ed-status" style="font-size:12.5px"></span>
       <button class="btn small primary" id="ed-save" disabled style="padding:6px 14px;font-size:13px">저장</button>
@@ -1576,6 +1585,14 @@ function openEditor(job, segs) {
     </div>
     <div class="ed-seek" id="ed-seek"><i></i></div>
     <div class="ed-note">문장을 눌러 바로 고치세요 · 시간을 누르면 그 부분부터 들려요 · <b>Esc</b>: 재생/멈춤(2초 되감기) · 고친 줄은 노란색으로 표시돼요</div>
+    <div class="ai-box" id="ai-box" hidden>
+      <div><b>🤖 참고자료로 용어 후보 찾기</b> <span class="muted" style="font-size:12.5px">강의·회의 자료를 넣으면, 자료에 나온 용어를 잘못 받아쓴 곳을 찾아요.</span></div>
+      <div class="ai-row"><input type="file" id="ai-files" multiple accept=".pdf,.pptx,.docx,.txt,.md"><span class="muted" id="ai-info" style="font-size:12.5px"></span></div>
+      <textarea id="ai-text" placeholder="또는 자료 내용을 여기에 붙여넣으세요"></textarea>
+      <div class="ai-row"><button class="btn small accent" id="ai-run" type="button" disabled>후보 찾기</button>
+        <span class="muted" style="font-size:12px">자료와 전사본 글자가 Claude(Haiku)로 보내져요. 🔒 비공개 용어는 가려서 보내요. 대외비 자료는 넣지 마세요.</span></div>
+      <div id="ai-list"></div>
+    </div>
     <audio id="ed-audio" preload="auto"></audio>
     <div id="ed-rows"></div></div>`;
   const box = $("#ed-rows"), audio = $("#ed-audio");
@@ -1642,6 +1659,64 @@ function openEditor(job, segs) {
   } else {
     $("#ed-time").textContent = "이 작업은 음성 파일이 없어요 (새로 변환한 작업부터 들을 수 있어요). 고치기는 할 수 있어요.";
   }
+  // AI term candidates from reference material: applying one edits the line like typing would (then 저장)
+  if ($("#ed-ai")) {
+    let material = "";
+    const refresh = () => {
+      const text = [material, $("#ai-text").value].join("\n").trim();
+      $("#ai-run").disabled = text.length < 20;
+      return text;
+    };
+    $("#ed-ai").onclick = () => {
+      if (aiTerms) return alert(aiTerms);
+      $("#ai-box").hidden = !$("#ai-box").hidden;
+    };
+    $("#ai-text").oninput = refresh;
+    $("#ai-files").onchange = async (e) => {
+      $("#ai-info").textContent = "자료 읽는 중…";
+      const out = [], skipped = [];
+      for (const file of e.target.files) {
+        try { out.push(await referenceText(file)); } catch (err) { skipped.push(`${file.name}: ${err.message}`); }
+      }
+      material = out.join("\n").replace(/[ \t]+/g, " ").trim();
+      $("#ai-info").textContent = `자료 글자 ${material.length.toLocaleString()}자` + (material.length > 40000 ? " (앞 40,000자까지 보내요)" : "")
+        + (skipped.length ? ` · 읽지 못함: ${skipped.join(", ")}` : "");
+      refresh();
+    };
+    const list = $("#ai-list");
+    const apply = (c, el) => {
+      const r = rows[c.line];
+      if (!r || r.text.indexOf(c.wrong) < 0) { el.remove(); return false; }
+      r.text = r.text.replace(c.wrong, c.right);
+      rowEls[c.line].querySelector(".ed-txt").innerText = r.text;
+      rowEls[c.line].classList.toggle("edited", r.text !== r.saved);
+      el.remove();
+      return true;
+    };
+    $("#ai-run").onclick = () => busy($("#ai-run"), "찾는 중… (1분 안쪽)", async () => {
+      list.innerHTML = "";
+      let r;
+      try { r = await api("ai_terms", {id: job.id, reference: refresh()}); }
+      catch (err) { list.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+      const note = (r.failed || r.refused) ? " · 일부 구간은 확인하지 못했어요" : "";
+      if (!r.candidates.length) { list.innerHTML = `<div class="muted" style="font-size:13px">자료와 다르게 받아쓴 용어를 찾지 못했어요${note}.</div>`; return; }
+      list.innerHTML = `<div class="ai-row" style="font-size:13px"><span>후보 ${r.candidates.length}개 · 적용하면 노란 줄이 되고, <b>저장</b>을 눌러야 반영돼요${note}</span>
+        <span class="spacer" style="flex:1"></span><button class="btn small" id="ai-all" type="button">모두 적용</button></div>`
+        + r.candidates.map((c, k) => `<div class="ai-c" data-k="${k}"><button class="ed-t" type="button">${fmtTime((rows[c.line]?.start || 0) * 1000)}</button>
+          <s>${esc(c.wrong)}</s> → <b>${esc(c.right)}</b><span class="muted" style="font-size:12px;overflow-wrap:anywhere">${esc(rows[c.line]?.text || "")}</span>
+          <span class="spacer"></span><button class="btn small accent" data-act="ok" type="button">적용</button><button class="btn small ghost" data-act="no" type="button">무시</button></div>`).join("");
+      list.querySelectorAll(".ai-c").forEach((el) => {
+        const c = r.candidates[Number(el.dataset.k)];
+        el.querySelector(".ed-t").onclick = () => { rowEls[c.line]?.scrollIntoView({block: "center", behavior: "smooth"}); play(rows[c.line].start); };
+        el.querySelector('[data-act="ok"]').onclick = () => { apply(c, el); markDirty(); };
+        el.querySelector('[data-act="no"]').onclick = () => el.remove();
+      });
+      $("#ai-all").onclick = () => {
+        list.querySelectorAll(".ai-c").forEach((el) => apply(r.candidates[Number(el.dataset.k)], el));
+        markDirty();
+      };
+    });
+  }
   // Save / close
   $("#ed-save").onclick = () => busy($("#ed-save"), "저장 중…", async () => {
     const changes = edited();
@@ -1660,6 +1735,72 @@ function openEditor(job, segs) {
   };
 }
 addEventListener("beforeunload", (e) => { if (editorDirty) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------- reference material → plain text, in the browser (the file itself is never uploaded) ---------- */
+async function referenceText(file) {
+  const ext = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase();
+  if (ext === "txt" || ext === "md") return await file.text();
+  if (ext === "pdf") return await pdfText(file);
+  if (ext === "pptx") return xmlText(await zipEntries(file, /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/), "a:t", "a:p");
+  if (ext === "docx") return xmlText(await zipEntries(file, /^word\/document\.xml$/), "w:t", "w:p");
+  throw new Error(ext === "ppt" || ext === "doc" ? "예전 형식이라 PPTX·DOCX나 PDF로 저장해서 넣어 주세요" : "지원하지 않는 형식");
+}
+/* Entries of a zip (PPTX/DOCX) whose names match, read with the browser's own deflate. */
+async function zipEntries(file, pattern) {
+  const buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer), dec = new TextDecoder();
+  let e = buf.length - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("파일을 열 수 없어요");
+  const out = [];
+  for (let k = 0, p = dv.getUint32(e + 16, true), n = dv.getUint16(e + 10, true); k < n && dv.getUint32(p, true) === 0x02014b50; k++) {
+    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), local = dv.getUint32(p + 42, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+    if (!pattern.test(name)) continue;
+    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    const data = buf.subarray(start, start + size);
+    const bytes = method === 0 ? data : method === 8
+      ? new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()) : null;
+    if (bytes) out.push([name, dec.decode(bytes)]);
+  }
+  const num = (n) => Number((n.match(/(\d+)\.xml$/) || [])[1]) || 0;
+  return out.sort((a, c) => (a[0].includes("notes") - c[0].includes("notes")) || num(a[0]) - num(c[0])).map((x) => x[1]);
+}
+function xmlText(docs, run, para) {
+  const unescape = (t) => t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&amp;/g, "&");
+  const runRe = new RegExp(`<${run}(?:\\s[^>]*)?>([^<]*)</${run}>|</${para}>`, "g");
+  return docs.map((xml) => [...xml.matchAll(runRe)].map((m) => m[1] != null ? unescape(m[1]) : "\n").join("")).join("\n");
+}
+/* pdf.js from cdnjs, pinned and checked (the worker too: fetched with its hash, then run from a local blob). */
+const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+let pdfjsReady = null;
+function loadPdfjs() {
+  return pdfjsReady ||= (async () => {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = PDFJS + "pdf.min.js"; s.crossOrigin = "anonymous";
+      s.integrity = "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e";
+      s.onload = resolve; s.onerror = () => reject(new Error("PDF 도구를 불러오지 못했어요"));
+      document.head.appendChild(s);
+    });
+    const worker = await fetch(PDFJS + "pdf.worker.min.js", {integrity: "sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2"});
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([await worker.text()], {type: "text/javascript"}));
+    return pdfjsLib;
+  })().catch((err) => { pdfjsReady = null; throw err; });
+}
+async function pdfText(file) {
+  const lib = await loadPdfjs();
+  // isEvalSupported off: fonts never become code (CVE-2024-4367 in pdf.js before 4.2.67)
+  const doc = await lib.getDocument({data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false}).promise;
+  const pages = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const content = await (await doc.getPage(n)).getTextContent();
+    pages.push(content.items.map((it) => it.str + (it.hasEOL ? "\n" : "")).join(""));
+  }
+  return pages.join("\n");
+}
 
 function save(title, ext, text, type) {
   const a = document.createElement("a");
@@ -1797,7 +1938,7 @@ async function view(id) {
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
   if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
-  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs);
+  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms);
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
