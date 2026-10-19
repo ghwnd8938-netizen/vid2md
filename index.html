@@ -1567,7 +1567,7 @@ async function downloadMp3(job, btn) {
 /* ---------- 들으며 고치기: the MP3 next to the timed lines; edit a line in place, save, and the
    corrections are compared with the machine's words on the server (suggestions for the dictionary). */
 let editorDirty = false;
-function openEditor(job, segs, aiTerms) {
+function openEditor(job, segs, aiTerms, aiPrivate) {
   const rows = segs.map((row, i) => ({i, start: Number(row[0]) || 0, end: Number(row[1]) || 0, text: String(row[2] || ""), saved: String(row[2] || "")}));
   const starts = rows.map((r) => r.start);
   editorDirty = false;
@@ -1592,6 +1592,7 @@ function openEditor(job, segs, aiTerms) {
       <textarea id="ai-text" placeholder="또는 자료 내용을 여기에 붙여넣으세요"></textarea>
       <div class="ai-row"><button class="btn small accent" id="ai-run" type="button" disabled>후보 찾기</button>
         <span class="muted" style="font-size:12px">자료와 전사본 글자가 Claude(Haiku)로 보내져요. 🔒 비공개 용어는 가려서 보내요. 대외비 자료는 넣지 마세요.</span></div>
+      ${aiPrivate ? `<div class="muted" style="font-size:12px">🔒 비공개 용어 묶음을 쓴 작업이에요. 묶음의 단어는 □□로 가리지만 문장 내용은 보내져요. 후보 찾기를 누르면 한 번 더 물어봐요.</div>` : ""}
       <div id="ai-list"></div>
     </div>
     <audio id="ed-audio" preload="auto"></audio>
@@ -1697,7 +1698,8 @@ function openEditor(job, segs, aiTerms) {
     $("#ai-run").onclick = () => busy($("#ai-run"), "찾는 중… (1분 안쪽)", async () => {
       list.innerHTML = "";
       let r;
-      try { r = await api("ai_terms", {id: job.id, reference: refresh()}); }
+      if (aiPrivate && !confirm("🔒 비공개 용어 묶음을 쓴 작업이에요.\n\n묶음의 단어는 □□로 가리고 보내지만, 강의 문장과 자료 내용은 Anthropic(Claude Haiku)으로 보내져요.\n\n보낼까요?")) return;
+      try { r = await api("ai_terms", {id: job.id, reference: refresh(), confirm_private: aiPrivate === true}); }
       catch (err) { list.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
       const note = (r.failed || r.refused) ? " · 일부 구간은 확인하지 못했어요" : "";
       if (!r.candidates.length) { list.innerHTML = `<div class="muted" style="font-size:13px">자료와 다르게 받아쓴 용어를 찾지 못했어요${note}.</div>`; return; }
@@ -1939,7 +1941,7 @@ async function view(id) {
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
   if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
-  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms);
+  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true);
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
