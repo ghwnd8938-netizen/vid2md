@@ -503,6 +503,10 @@
               <input class="field tiny" type="number" id="opt-speakers" min="1" max="20" placeholder="몇 명" title="화자 수를 알면 입력 (정확도 향상)"></label>
             <label class="toggle"><input type="checkbox" id="opt-denoise">
               <span class="t">배경음악 제거<small>음악이 크게 깔린 영상만 · 느려져요</small></span></label>
+            <label class="toggle"><input type="checkbox" id="opt-hq">
+              <span class="t">고품질 받아쓰기<small>더 큰 모델로 꼼꼼히 들어요 · 약 2.5배 느려요 · 중요한 강의에</small></span></label>
+            <label class="toggle"><input type="checkbox" id="opt-slides">
+              <span class="t">화면 글자 읽기<small>올린 영상 속 PPT 글자를 읽어 용어 힌트와 참고자료로 써요 · 영상 파일만</small></span></label>
           </div>
         </details>
         <div id="upload-state" hidden><div class="bar"><i></i></div><div class="muted" id="upload-text" style="margin-top:6px"></div></div>
@@ -1105,7 +1109,8 @@ $("#new-form").onsubmit = async (e) => {
   e.preventDefault(); $("#new-error").textContent = "";
   const prompt = $("#prompt").value, title = $("#title").value.trim();
   const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
-                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value, external: $("#opt-external").checked};
+                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value, external: $("#opt-external").checked,
+                   hq: $("#opt-hq").checked, slides: $("#opt-slides").checked};
   $("#submit").disabled = true;
   try {
     if (tab === "drive") {
@@ -1165,7 +1170,8 @@ async function startRecording() {
     return;
   }
   const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
-                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value, external: $("#opt-external").checked};
+                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value, external: $("#opt-external").checked,
+                   hq: $("#opt-hq").checked, slides: $("#opt-slides").checked};
   let job;
   try { job = await api("rec_start", {ext: format.ext, title: $("#title").value.trim(), prompt: $("#prompt").value, options,
                                        folder: currentFolder()?.id || ""}); }
@@ -1538,7 +1544,8 @@ function renderJobs() {
 
 function optionTags(o) {
   o = o || {};
-  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.glossary && `📖 ${packLabel(o.glossary)}`]
+  return [o.diarize && (o.speakers ? `화자 ${o.speakers}명` : "화자 구분"), o.denoise && "배경음 제거", o.hq && "고품질",
+          o.slides && "화면 글자", o.glossary && `📖 ${packLabel(o.glossary)}`]
     .filter(Boolean).map((t) => `<span class="badge">${esc(t)}</span>`).join(" ");
 }
 
@@ -1599,7 +1606,7 @@ async function downloadMp3(job, btn) {
 /* ---------- 들으며 고치기: the MP3 next to the timed lines; edit a line in place, save, and the
    corrections are compared with the machine's words on the server (suggestions for the dictionary). */
 let editorDirty = false;
-function openEditor(job, segs, aiTerms, aiPrivate) {
+function openEditor(job, segs, aiTerms, aiPrivate, slides) {
   const rows = segs.map((row, i) => ({i, start: Number(row[0]) || 0, end: Number(row[1]) || 0, text: String(row[2] || ""), saved: String(row[2] || "")}));
   const starts = rows.map((r) => r.start);
   editorDirty = false;
@@ -1695,7 +1702,7 @@ function openEditor(job, segs, aiTerms, aiPrivate) {
   }
   // AI term candidates from reference material: applying one edits the line like typing would (then 저장)
   if ($("#ed-ai")) {
-    let material = "";
+    let material = slides || ""; // 화면 글자: what was read from the video's slides is the reference to start with
     const refresh = () => {
       const text = [material, $("#ai-text").value].join("\n").trim();
       $("#ai-run").disabled = text.length < 20;
@@ -1706,13 +1713,17 @@ function openEditor(job, segs, aiTerms, aiPrivate) {
       $("#ai-box").hidden = !$("#ai-box").hidden;
     };
     $("#ai-text").oninput = refresh;
+    if (material) {
+      $("#ai-info").textContent = `영상 화면에서 읽은 글자 ${material.length.toLocaleString()}자가 들어 있어요. 파일이나 글을 더 넣어도 돼요.`;
+      refresh();
+    }
     $("#ai-files").onchange = async (e) => {
       $("#ai-info").textContent = "자료 읽는 중…";
       const out = [], skipped = [];
       for (const file of e.target.files) {
         try { out.push(await referenceText(file)); } catch (err) { skipped.push(`${file.name}: ${err.message}`); }
       }
-      material = out.join("\n").replace(/[ \t]+/g, " ").trim();
+      material = [slides || "", ...out].join("\n").replace(/[ \t]+/g, " ").trim();
       $("#ai-info").textContent = `자료 글자 ${material.length.toLocaleString()}자` + (material.length > 40000 ? " (앞 40,000자까지 보내요)" : "")
         + (skipped.length ? ` · 읽지 못함: ${skipped.join(", ")}` : "");
       refresh();
@@ -1976,7 +1987,7 @@ async function view(id) {
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
   if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
-  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true);
+  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true, r.slides || "");
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
