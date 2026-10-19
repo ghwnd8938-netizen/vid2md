@@ -1257,7 +1257,7 @@ async function uploadDirect(file, prompt, options, title) {
   const show = (done) => {
     $("#upload-state").hidden = false;
     $("#upload-state .bar i").style.width = `${done / total * 100}%`;
-    $("#upload-text").textContent = `구글 드라이브로 올리는 중 ${mb(done)}MB / ${mb(total)}MB (${Math.floor(done / total * 100)}%)`;
+    $("#upload-text").textContent = `올리는 중 ${mb(done)}MB / ${mb(total)}MB (${Math.floor(done / total * 100)}%)`;
   };
   let offset = 0, fileId = "", failures = 0;
   show(0);
@@ -1310,7 +1310,8 @@ async function uploadFile(file, prompt, options, title) {
   const show = () => {
     $("#upload-state").hidden = false;
     $("#upload-state .bar i").style.width = `${done / total * 100}%`;
-    $("#upload-text").textContent = `올리는 중 ${done}/${total} (${Math.min(done * size, file.size) / 1048576 | 0}MB / ${file.size / 1048576 | 0}MB)`;
+    const sent = Math.min(done * size, file.size);
+    $("#upload-text").textContent = `올리는 중 ${sent / 1048576 | 0}MB / ${file.size / 1048576 | 0}MB (${Math.floor(sent / (file.size || 1) * 100)}%)`;
   };
   show();
   // Three pieces at a time; each retried up to 3 times.
