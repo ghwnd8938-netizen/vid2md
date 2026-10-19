@@ -348,6 +348,9 @@
     color: var(--accent-deep); text-align: left; padding: 0 4px; border-radius: 6px; }
   .ed-t:hover { background: var(--accent); color: #fff; }
   .ed-txt { outline: none; padding: 2px 8px; border-radius: 8px; line-height: 1.75; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .sugg-group { margin-top: 10px; }
+  .sugg-head { display: flex; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+  .sugg-head .btn { margin-left: auto; }
   .ai-box { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg); }
   .ai-box textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; font-size: 13px; padding: 8px; border-radius: 9px;
     border: 1px solid var(--line-strong); background: var(--bg); color: var(--text); }
@@ -812,22 +815,48 @@ async function renderSuggestions() {
     return;
   }
   const packs = [["", "공통 (모든 영상)"], ...dictGroups.map((g) => [g, packLabel(g)])];
-  const last = store.get("vid2md.suggPack") || "";
-  box.innerHTML = `<div class="hint-note">들으며 고친 말 중 반복된 것부터 보여요. <b>추가</b>하면 고쳐쓰기 규칙이 되고, 다음 전사본부터 자동으로 고쳐져요.
-    ⚠ 표시는 짧아서 다른 곳의 맞는 말까지 바꿀 수 있는 것이에요.</div>` + list.map((x) => `<div class="sugg" data-id="${esc(x.id)}">
+  const label = (g) => (packs.find(([k]) => k === g) || [g, packLabel(g)])[1];
+  const order = [...new Set(list.map((x) => x.group))];
+  const item = (x) => `<div class="sugg" data-id="${esc(x.id)}">
       <div><b>${esc(x.wrong)}</b> → <b>${esc(x.right)}</b>${x.risky ? ' <span class="badge" title="짧은 말이라 맞는 곳까지 바뀔 수 있어요">⚠ 짧은 말</span>' : ""}
         <div class="meta">${x.count}번 고침 · 작업 ${x.jobs}개</div></div>
-      <div class="actions"><select class="move">${packs.map(([g, label]) => `<option value="${esc(g)}"${g === last ? " selected" : ""}>${esc(label)}</option>`).join("")}</select>
-        <button class="btn small accent" data-act="accept">추가</button><button class="btn small ghost" data-act="dismiss">무시</button></div></div>`).join("");
+      <div class="actions"><select class="move">${packs.map(([g, l]) => `<option value="${esc(g)}"${g === x.group ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+        <button class="btn small accent" data-act="accept">추가</button><button class="btn small ghost" data-act="dismiss">무시</button></div></div>`;
+  box.innerHTML = `<div class="hint-note">들으며 고친 말(직접 고친 것과 🤖 후보를 적용한 것)이 그 강의의 묶음별로 모여요. <b>추가</b>하면 고쳐쓰기 규칙이 되고,
+    다음 전사본부터 자동으로 고쳐져요. 같은 고침이 서로 다른 전사본 3개에서 나오면 그 묶음에 저절로 들어가요(공통·짧은 말 제외).
+    ⚠ 표시는 짧아서 다른 곳의 맞는 말까지 바꿀 수 있는 것이에요.</div>` + order.map((g) => {
+      const items = list.filter((x) => x.group === g);
+      const safe = items.filter((x) => !x.risky).length;
+      return `<div class="sugg-group" data-group="${esc(g)}"><div class="sugg-head"><b>${esc(label(g))}</b> <span class="muted">${items.length}개</span>
+        ${safe ? `<button class="btn small accent" data-act="all">모두 추가 (${safe})</button>` : ""}</div>${items.map(item).join("")}</div>`;
+    }).join("");
   box.querySelectorAll(".sugg").forEach((el) => el.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => busy(b, "…", async () => {
     const group = el.querySelector("select").value;
     try {
       await api("suggestion_decide", {id: el.dataset.id, accept: b.dataset.act === "accept", group});
-      if (b.dataset.act === "accept") store.set("vid2md.suggPack", group);
       el.remove();
       if (!box.querySelector(".sugg")) renderSuggestions();
+      refreshSuggBadge();
     } catch (err) { alert(err.message); }
   })));
+  box.querySelectorAll('[data-act="all"]').forEach((b) => b.onclick = () => busy(b, "추가하는 중…", async () => {
+    const group = b.closest(".sugg-group").dataset.group;
+    try {
+      const r = await api("suggestions_accept_group", {group});
+      $("#dict-status").textContent = `${label(group)}에 ${r.added}개를 추가했어요.`;
+      renderSuggestions();
+      refreshSuggBadge();
+    } catch (err) { alert(err.message); }
+  }));
+}
+
+/* 💡 on the dictionary button: how many suggestions wait for the admin. */
+function suggBadge(n) {
+  $("#open-dict").textContent = n ? `📖 용어 사전 · 💡 ${n}` : "📖 용어 사전";
+}
+async function refreshSuggBadge() {
+  if (me?.role !== "admin") return;
+  try { suggBadge((await api("me")).suggestions || 0); } catch {}
 }
 
 async function loadDict() {
@@ -985,7 +1014,10 @@ $("#dict-apply").onclick = async () => {
 };
 
 async function enter() {
-  try { me = (await api("me")).user; } catch { return; }
+  let mine;
+  try { mine = await api("me"); } catch { return; }
+  me = mine.user;
+  suggBadge(mine.suggestions || 0);
   $("#login").hidden = true; $("#app").hidden = false; $("#who").hidden = false;
   $("#who-name").textContent = me.name;
   $("#who-avatar").textContent = initial(me.name);
@@ -1727,7 +1759,10 @@ function openEditor(job, segs, aiTerms, aiPrivate) {
       const r = await api("save_edits", {id: job.id, edits: changes.map((x) => [x.i, x.text])});
       changes.forEach((x) => { x.saved = x.text; rowEls[x.i].classList.remove("edited"); });
       markDirty();
-      $("#ed-status").textContent = `저장했어요 · ${r.changed}줄` + (r.learned ? ` · 고쳐쓰기 추천 후보 ${r.learned}개` : "");
+      const where = Object.entries(r.groups || {}).map(([g, n]) => `${g ? packLabel(g) : "공통"} ${n}`).join(", ");
+      $("#ed-status").textContent = `저장했어요 · ${r.changed}줄` + (r.learned ? ` · 💡 추천 ${r.learned}개 (${where})` : "")
+        + (r.auto ? ` · 사전에 자동 추가 ${r.auto}개` : "");
+      refreshSuggBadge();
     } catch (err) { alert(err.message); }
   });
   $("#ed-close").onclick = () => {
