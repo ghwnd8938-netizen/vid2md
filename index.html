@@ -375,6 +375,19 @@
   details.bulk textarea { width: 100%; min-height: 140px; font: 13px/1.5 var(--font); resize: vertical; }
   details.bulk .actions { margin: 8px 0 12px; }
   .hint { font-size: 13px; color: var(--muted); background: var(--softer); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; }
+  dialog.wide { width: min(980px, calc(100vw - 32px)); }
+  .tbl-wrap { overflow-x: auto; margin: 6px 0 16px; }
+  .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .tbl th, .tbl td { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+  .tbl th { color: var(--muted); font-weight: 600; border-top: 0; }
+  .tbl td.t { white-space: normal; min-width: 180px; }
+  .tbl .link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .admin-h { font-size: 15px; margin: 14px 0 2px; color: var(--ink); }
+  .inbox { border: 1px solid var(--line); background: var(--softer); border-radius: 12px; padding: 4px 12px; margin-bottom: 10px; }
+  .inbox .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; }
+  .inbox .row + .row { border-top: 1px solid var(--line); }
+  .shared-note { font-size: 13px; color: var(--muted); margin: -2px 0 10px; }
+  .admin-note { font-size: 12px; color: var(--faint); margin-top: 12px; }
 </style>
 <script src="config.js"></script>
 </head>
@@ -437,6 +450,7 @@
     <div class="who">
       <button class="btn small" id="open-dict">📖 용어 사전</button>
       <button class="btn small" id="open-users" hidden>사용자 <span class="dot-count" id="pending-count" hidden></span></button>
+      <button class="btn small" id="open-admin" hidden>👑 관리</button>
       <span class="badge accent" id="who-admin" hidden>관리자</span>
       <span class="avatar" id="who-avatar"></span><span class="who-name" id="who-name"></span>
       <button class="btn small ghost" id="logout">로그아웃</button>
@@ -522,10 +536,12 @@
           <button aria-pressed="true" data-filter="all">전체</button><button aria-pressed="false" data-filter="active">진행</button><button aria-pressed="false" data-filter="done">완료</button><button aria-pressed="false" data-filter="failed">실패</button>
         </div>
       </div>
+      <div class="inbox" id="share-inbox" hidden></div>
       <div class="folders" id="folders" role="group" aria-label="폴더"></div>
       <div class="folder-tools" id="folder-tools" hidden><b id="folder-current"></b>
         <button class="btn small ghost" id="folder-rename">이름 바꾸기</button><button class="btn small ghost" id="folder-remove">폴더 삭제</button></div>
       <div id="jobs"><div class="empty">불러오는 중…</div></div>
+      <div class="admin-note">다 함께 쓰는 서비스라, 관리자는 운영을 위해 모든 작업 목록과 내용을 볼 수 있어요.</div>
     </section>
   </div>
 
@@ -598,6 +614,27 @@
   </div>
 </dialog>
 
+<dialog id="admin" class="wide">
+  <div class="dlg-head"><b>👑 관리자 모드</b><button class="btn small ghost" id="close-admin">닫기</button></div>
+  <div class="dlg-body" id="admin-body"><div class="empty">불러오는 중…</div></div>
+</dialog>
+
+<dialog id="share">
+  <div class="dlg-head"><b>📤 전사본 공유</b><button class="btn small ghost" id="close-share">닫기</button></div>
+  <div class="dlg-body">
+    <div class="hint">공유받은 사람은 전사본을 보고, 받고, 음성을 들을 수 있어요. 고치려면 <b>내 사본 만들기</b>로 자기 작업에 복사해요.
+      한 사람에게 보내면 그 사람이 <b>받기</b>를 눌러야 공유돼요. 🔒 비공개 묶음을 쓴 작업은 공유하지 않아요.</div>
+    <form class="invite" id="share-form">
+      <select class="field" id="share-to"></select>
+      <button class="btn accent">공유</button>
+    </form>
+    <div class="error" id="share-error" style="margin-bottom:6px"></div>
+    <div id="share-list"></div>
+    <label class="toggle" style="margin-top:12px"><input type="checkbox" id="auto-share">
+      <span class="t">같은 영상은 자동 공유<small>다른 사람이 내가 변환한 것과 같은 영상을 올리면 묻지 않고 공유해요 (🔒 비공개 묶음 작업 빼고)</small></span></label>
+  </div>
+</dialog>
+
 <script>
 "use strict";
 const CFG = window.VID2MD_CONFIG || {};
@@ -613,6 +650,9 @@ let token = store.get("vid2md.token"), me = null, jobs = [], filter = "all", tab
 let pollTimer = null, waitTimer = null, openId = null;
 // Folders in "내 작업": "*" shows everything, "" the jobs in no folder, otherwise a folder id.
 let folders = [], folder = store.get("vid2md.folder") || "*";
+// 공유: jobs others shared with me (a chip of their own), and the shares that wait on my answer.
+const SHARED = "@shared";
+let sharedJobs = [], inbox = [];
 const currentFolder = () => folders.find((f) => f.id === folder) || null;
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 
@@ -1029,6 +1069,7 @@ async function enter() {
   loadGroups();
   $("#who-admin").hidden = me.role !== "admin";
   $("#open-users").hidden = me.role !== "admin";
+  $("#open-admin").hidden = me.role !== "admin";
   // On unless this browser last chose otherwise. (A private glossary pack keeps a job inside either way; the
   // backend checks that.)
   $("#opt-external").checked = store.get("vid2md.external") !== "off";
@@ -1114,13 +1155,17 @@ $("#new-form").onsubmit = async (e) => {
   $("#submit").disabled = true;
   try {
     if (tab === "drive") {
+      if (await alreadyDone({drive: $("#drive-url").value})) { $("#drive-url").value = ""; refresh(); return; }
       await api("add_drive", {url: $("#drive-url").value, title, prompt, options, folder: currentFolder()?.id || ""});
       $("#drive-url").value = ""; $("#title").value = "";
     } else if (tab === "url") {
+      if (await alreadyDone({url: $("#url").value})) { $("#url").value = ""; refresh(); return; }
       await api("add_link", {url: $("#url").value, title, prompt, force_whisper: $("#force").checked, options, folder: currentFolder()?.id || ""});
       $("#url").value = ""; $("#title").value = "";
     } else {
       if (!picked) throw new Error("파일을 고르세요.");
+      picked.fp = await fingerprint(picked).catch(() => "");
+      if (picked.fp && await alreadyDone({fingerprint: picked.fp})) { pick(null); $("#file").value = ""; refresh(); return; }
       await upload(picked, prompt, options, title); pick(null); $("#file").value = ""; $("#title").value = "";
     }
     refresh();
@@ -1289,7 +1334,7 @@ const DIRECT_MIN_BYTES = 200 * 1024 * 1024, DIRECT_CHUNK = 64 * 1024 * 1024, CLA
 const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 async function uploadDirect(file, prompt, options, title) {
-  const start = await api("direct_start", {name: file.name, size: file.size, mime: file.type || "application/octet-stream",
+  const start = await api("direct_start", {name: file.name, size: file.size, mime: file.type || "application/octet-stream", fingerprint: file.fp || "",
                                            origin: location.origin, title, prompt, options, folder: currentFolder()?.id || ""});
   const total = file.size, mb = (n) => (n / 1048576) | 0;
   const show = (done) => {
@@ -1342,7 +1387,7 @@ async function uploadFile(file, prompt, options, title) {
   if (file.size > CLASSIC_MAX_BYTES) {
     throw new Error("이 브라우저에서는 2GB 넘는 파일을 바로 올릴 수 없어요. 구글 드라이브에 올린 뒤 '드라이브' 탭에 링크를 넣어 주세요.");
   }
-  const start = await api("upload_start", {name: file.name, size: file.size, title, prompt, options, folder: currentFolder()?.id || ""});
+  const start = await api("upload_start", {name: file.name, size: file.size, fingerprint: file.fp || "", title, prompt, options, folder: currentFolder()?.id || ""});
   const size = start.chunk_bytes, total = start.chunks;
   let next = 0, done = 0;
   const show = () => {
@@ -1377,7 +1422,11 @@ document.querySelectorAll("[data-filter]").forEach((b) => b.onclick = () => {
 
 async function refresh() {
   clearTimeout(pollTimer);
-  try { const r = await api("jobs"); jobs = r.jobs; folders = r.folders || []; } catch { return; }
+  try {
+    const r = await api("jobs");
+    jobs = r.jobs; folders = r.folders || []; sharedJobs = r.shared || []; inbox = r.inbox || [];
+  } catch { return; }
+  renderInbox();
   renderJobs();
   if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) pollTimer = setTimeout(refresh, 8000);
 }
@@ -1432,18 +1481,34 @@ async function refresh() {
   };
 })();
 
+function renderInbox() {
+  const box = $("#share-inbox");
+  box.hidden = !inbox.length;
+  box.innerHTML = inbox.map((s) => `<div class="row"><div><b>${s.kind === "requested" ? `📥 ${esc(s.who)} 님의 공유 요청` : `📤 ${esc(s.who)} 님이 공유해요`}</b>
+      <div class="muted">${esc(s.title)}</div></div>
+    <div class="actions"><button class="btn small accent" data-share="${esc(s.id)}" data-yes="1">${s.kind === "requested" ? "공유하기" : "받기"}</button>
+      <button class="btn small ghost" data-share="${esc(s.id)}" data-yes="">거절</button></div></div>`).join("");
+  box.querySelectorAll("[data-share]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    try { await api("share_decide", {share: b.dataset.share, accept: !!b.dataset.yes}); } catch (err) { alert(err.message); }
+    refresh();
+  });
+}
+
 function renderFolders() {
-  if (folder !== "*" && (folder !== "" || !folders.length) && !currentFolder()) folder = "*";
+  if (folder === SHARED && !sharedJobs.length) folder = "*";
+  if (folder !== "*" && folder !== SHARED && (folder !== "" || !folders.length) && !currentFolder()) folder = "*";
   const count = (id) => jobs.filter((j) => (j.collection || "") === id).length;
   const chip = (id, label, n) =>
     `<button class="fchip" data-folder="${esc(id)}" aria-pressed="${folder === id}">${label} <i>${n}</i></button>`;
   $("#folders").innerHTML = chip("*", "모든 작업", jobs.length) + (folders.length ? chip("", "폴더 없음", count("")) : "")
     + folders.map((f) => chip(f.id, `📁 ${esc(f.name)}`, count(f.id))).join("")
+    + (sharedJobs.length ? chip(SHARED, "📥 공유받은 작업", sharedJobs.length) : "")
     + '<button class="fchip add" id="folder-add" title="새 폴더 만들기">+ 새 폴더</button>';
   $("#folders").querySelectorAll("[data-folder]").forEach((b) => {
     const id = b.dataset.folder;
     b.onclick = () => { folder = id; store.set("vid2md.folder", id === "*" ? null : id); renderJobs(); };
-    if (id === "*") return;
+    if (id === "*" || id === SHARED) return;
     // Drop a job card on a folder to move it there.
     b.ondragover = (e) => { if (e.dataTransfer.types.includes("text/x-vid2md-job")) { e.preventDefault(); b.classList.add("drop-on"); } };
     b.ondragleave = () => b.classList.remove("drop-on");
@@ -1500,8 +1565,9 @@ function renderJobs() {
   const match = {all: () => true, active: (j) => ["queued", "running", "uploading"].includes(j.status),
                  done: (j) => j.status === "done", failed: (j) => j.status === "failed"}[filter];
   const inFolder = (j) => folder === "*" || (j.collection || "") === folder;
-  const list = jobs.filter((j) => match(j) && inFolder(j)), box = $("#jobs");
-  const empty = !jobs.length ? "아직 작업이 없습니다."
+  const sharedView = folder === SHARED;
+  const list = sharedView ? sharedJobs.filter(match) : jobs.filter((j) => match(j) && inFolder(j)), box = $("#jobs");
+  const empty = sharedView ? "해당하는 공유받은 작업이 없습니다." : !jobs.length ? "아직 작업이 없습니다."
     : currentFolder() && !jobs.some(inFolder) ? "비어 있는 폴더예요. 작업의 📁 메뉴로 옮기거나, 이 폴더를 연 채로 새 변환을 시작하세요."
     : "해당하는 작업이 없습니다.";
   box.innerHTML = list.length ? "" : `<div class="empty">${empty}</div>`;
@@ -1512,24 +1578,27 @@ function renderJobs() {
     const move = own && folders.length ? `<select class="move" title="폴더로 옮기기" aria-label="폴더로 옮기기">
         <option value="">📁 폴더 없음</option>${folders.map((f) =>
           `<option value="${esc(f.id)}"${f.id === job.collection ? " selected" : ""}>📁 ${esc(f.name)}</option>`).join("")}</select>` : "";
+    const buttons = sharedView ? `<button class="btn small accent" data-act="view">열기</button><button class="btn small" data-act="md">md 받기</button>
+        <button class="btn small" data-act="copy" title="내 작업으로 복사해서 고칠 수 있어요">내 사본 만들기</button>
+        ${job.everyone ? "" : `<button class="btn small ghost" data-act="unshare">목록에서 빼기</button>`}` : `
+        ${job.status === "done" ? `<button class="btn small accent" data-act="view">열기</button><button class="btn small" data-act="md">md 받기</button>` : ""}
+        ${job.status === "failed" ? `<button class="btn small" data-act="retry">다시 시도</button>` : ""}
+        ${job.status === "recording" && rec?.id !== job.id ? `<button class="btn small accent" data-act="finish_rec" title="창이 꺼져 멈춘 녹음을 지금까지 녹음된 만큼 변환해요">여기까지 변환</button>` : ""}
+        ${move}
+        ${job.status !== "running" && rec?.id !== job.id ? `<button class="btn small ghost" data-act="delete">삭제</button>` : ""}`;
     el.innerHTML = `
       <div class="title-row"><div class="title">${esc(job.title)}</div>
-        <button class="icon-btn" data-act="rename" title="제목 바꾸기" aria-label="제목 바꾸기">✎</button></div>
+        ${sharedView ? "" : `<button class="icon-btn" data-act="rename" title="제목 바꾸기" aria-label="제목 바꾸기">✎</button>`}</div>
       <div class="meta"><span class="chip ${esc(job.status)}">${STATUS[job.status] || esc(job.status)}</span>
         ${job.method ? `<span>${esc(METHOD[job.method] || job.method)}</span>` : ""}
         ${optionTags(job.options)}
+        ${sharedView ? `<span>📥 ${esc(job.shared_by)}${job.everyone ? " · 모두에게" : ""}</span>` : ""}
         ${job.status === "running" ? `<span>${esc(job.stage)}${pct ? ` ${pct}%` : ""}</span>` : ""}
         ${job.status === "queued" && job.stage ? `<span>${esc(job.stage)}</span>` : ""}
         <span>${new Date(job.created * 1000).toLocaleString("ko-KR", {dateStyle: "short", timeStyle: "short"})}</span></div>
       ${job.status === "running" ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}
       ${job.error && job.status === "failed" ? `<div class="error">${esc(job.error)}</div>` : ""}
-      <div class="actions">
-        ${job.status === "done" ? `<button class="btn small accent" data-act="view">열기</button><button class="btn small" data-act="md">md 받기</button>` : ""}
-        ${job.status === "failed" ? `<button class="btn small" data-act="retry">다시 시도</button>` : ""}
-        ${job.status === "recording" && rec?.id !== job.id ? `<button class="btn small accent" data-act="finish_rec" title="창이 꺼져 멈춘 녹음을 지금까지 녹음된 만큼 변환해요">여기까지 변환</button>` : ""}
-        ${move}
-        ${job.status !== "running" && rec?.id !== job.id ? `<button class="btn small ghost" data-act="delete">삭제</button>` : ""}
-      </div>`;
+      <div class="actions">${buttons}</div>`;
     el.querySelector(".title").onclick = () => job.status === "done" && view(job.id);
     if (el.querySelector("select.move")) el.querySelector("select.move").onchange = (e) => moveJob(job, e.target.value);
     if (own && folders.length) {
@@ -1555,6 +1624,17 @@ async function act(job, action) {
     if (action === "md") return downloadMd(job.id);
     if (action === "retry") await api("retry", {id: job.id});
     if (action === "finish_rec") await api("rec_finish", {id: job.id});
+    if (action === "copy") {
+      const r = await api("share_copy", {id: job.id});
+      folder = "*"; store.set("vid2md.folder", null);
+      await refresh();
+      return view(r.id);
+    }
+    if (action === "unshare") {
+      if (!confirm(`"${job.title}"을(를) 공유받은 목록에서 뺄까요? 다시 보려면 공유를 다시 받아야 해요.`)) return;
+      await api("share_end", {share: job.share});
+      if (openId === job.id) { openId = null; emptyViewer(); }
+    }
     if (action === "rename") {
       const title = await askText("제목 바꾸기", job.title);
       if (!title || title === job.title) return;
@@ -1980,14 +2060,18 @@ async function view(id) {
       <div class="viewer-tools">${r.job.original_url ? `<a class="btn small" href="${esc(r.job.original_url)}" target="_blank" rel="noopener" title="구글 드라이브에 보관된 원본 영상">🎬 원본</a>` : ""}
       ${me?.role === "admin" ? `<button class="btn small" id="viewer-fix" title="틀린 단어를 드래그해서 고른 뒤 누르세요">📖 고칠 말 추가</button>` : ""}
       ${segs && r.job.status === "done" && (me?.role === "admin" || r.job.owner === me?.id) ? `<button class="btn small accent" id="viewer-edit" title="음성을 들으면서 문장을 바로 고쳐요">✏️ 들으며 고치기</button>` : ""}
+      ${r.shareable ? `<button class="btn small" id="viewer-share" title="다른 사람에게 이 전사본을 공유해요">📤 공유${r.shares?.length ? ` ${r.shares.length}` : ""}</button>` : ""}
+      ${r.shared ? `<button class="btn small accent" id="viewer-copy" title="내 작업으로 복사해서 고칠 수 있어요">내 사본 만들기</button>` : ""}
       <button class="btn small" id="viewer-md">.md</button>
       ${r.job.has_audio ? `<button class="btn small" id="viewer-mp3" title="소리만 담은 MP3 (약 1시간에 29MB)">🎧 .mp3</button>` : ""}
       ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">.${k}</button>`).join("") : ""}</div></div>
-    <h1>${esc(r.job.title)}</h1><div class="facts">${facts}</div>
+    <h1>${esc(r.job.title)}</h1>${r.shared ? `<div class="shared-note">📥 ${esc(r.shared.by)} 님이 공유한 전사본 · 보기 전용</div>` : ""}<div class="facts">${facts}</div>
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
   if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
   if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true, r.slides || "");
+  if ($("#viewer-share")) $("#viewer-share").onclick = () => openShare(r);
+  if ($("#viewer-copy")) $("#viewer-copy").onclick = () => act(r.job, "copy");
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
@@ -1998,6 +2082,106 @@ async function view(id) {
   document.querySelectorAll("[data-export]").forEach((b) => b.onclick = () =>
     save(r.job.title, `.${b.dataset.export}`, EXPORTS[b.dataset.export](segs), b.dataset.export === "vtt" ? "text/vtt" : "text/plain"));
   if (matchMedia("(max-width: 920px)").matches) $("#viewer").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+/* ---------- 📤 공유 ---------- */
+let shareJob = null;
+const SHARE_STATUS = {active: "공유 중", offered: "받기를 기다려요", requested: "요청이 왔어요"};
+async function openShare(r) {
+  shareJob = r.job;
+  $("#share-error").textContent = "";
+  $("#auto-share").checked = !!me?.auto_share;
+  $("#share-to").innerHTML = '<option value="*">👥 모든 회원</option>';
+  renderShareList(r.shares || []);
+  $("#share").showModal();
+  try {
+    const members = (await api("members")).members;
+    $("#share-to").innerHTML = members.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")
+      + '<option value="*">👥 모든 회원</option>';
+  } catch (err) { $("#share-error").textContent = err.message; }
+}
+function renderShareList(list) {
+  const box = $("#share-list");
+  box.innerHTML = list.length ? list.map((s) => `<div class="user"><div><b>${esc(s.name)}</b> <span class="muted">${SHARE_STATUS[s.status] || esc(s.status)}</span></div>
+      <button class="btn small ghost" data-end="${esc(s.id)}">${s.status === "active" ? "공유 끊기" : "취소"}</button></div>`).join("")
+    : '<div class="muted">아직 공유하지 않았어요.</div>';
+  box.querySelectorAll("[data-end]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    try { await api("share_end", {share: b.dataset.end}); await reloadShares(); } catch (err) { alert(err.message); }
+  });
+}
+async function reloadShares() {
+  try { renderShareList((await api("job", {id: shareJob.id})).shares || []); } catch (err) { $("#share-error").textContent = err.message; }
+}
+$("#share-form").onsubmit = async (e) => {
+  e.preventDefault(); $("#share-error").textContent = "";
+  const button = e.submitter || $("#share-form button");
+  button.disabled = true;
+  try { await api("share_offer", {id: shareJob.id, to: $("#share-to").value}); await reloadShares(); }
+  catch (err) { $("#share-error").textContent = err.message; }
+  finally { button.disabled = false; }
+};
+$("#auto-share").onchange = async (e) => {
+  try { me = (await api("settings", {auto_share: e.target.checked})).user; }
+  catch (err) { e.target.checked = !e.target.checked; alert(err.message); }
+};
+$("#close-share").onclick = () => { $("#share").close(); if (openId) view(openId); };
+
+/* The same video may already be transcribed: by me (open it), shared with me, or by someone else (ask them for it
+   instead of transcribing it again). true when nothing new should be made. */
+async function alreadyDone(params) {
+  let r;
+  try { r = await api("dup_check", params); } catch { return false; } // an older backend: just go on
+  const known = r.mine || r.shared;
+  if (known) {
+    if (!confirm(`${r.mine ? "이미 내 작업" : "공유받은 작업"}에 같은 영상이 있어요.\n"${known.title}"\n\n확인: 그 작업 열기 · 취소: 새로 변환`)) return false;
+    view(known.id);
+    return true;
+  }
+  if (!r.dup) return false;
+  if (!confirm(`${r.dup.by} 님이 이미 같은 영상을 변환했어요${r.dup.duration ? ` (${r.dup.duration})` : ""}.\n"${r.dup.title}"\n\n`
+               + "확인: 공유 요청 (새로 변환하지 않아요) · 취소: 새로 변환")) return false;
+  const s = await api("share_request", {id: r.dup.id});
+  alert(s.status === "active" ? "바로 공유받았어요. '📥 공유받은 작업'에서 볼 수 있어요."
+                              : "공유를 요청했어요. 상대가 수락하면 '📥 공유받은 작업'에 들어와요.");
+  return true;
+}
+
+/* The same file anywhere: its size with its first and last megabyte (reading a whole video would take long). */
+async function fingerprint(file) {
+  if (!window.crypto?.subtle) return "";
+  const mb = 1048576;
+  const size = new TextEncoder().encode(String(file.size));
+  const head = new Uint8Array(await file.slice(0, mb).arrayBuffer());
+  const tail = new Uint8Array(await file.slice(Math.max(0, file.size - mb)).arrayBuffer());
+  const all = new Uint8Array(size.length + head.length + tail.length);
+  all.set(size, 0); all.set(head, size.length); all.set(tail, size.length + head.length);
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", all));
+  return [...hash].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ---------- 👑 관리자 모드 ---------- */
+$("#open-admin").onclick = async () => { $("#admin").showModal(); await loadAdmin(); };
+$("#close-admin").onclick = () => $("#admin").close();
+const spent = (s) => s >= 3600 ? `${Math.floor(s / 3600)}시간 ${Math.round(s % 3600 / 60)}분` : s >= 60 ? `${Math.round(s / 60)}분` : s ? `${s}초` : "";
+const when = (t) => t ? new Date(t * 1000).toLocaleString("ko-KR", {dateStyle: "short", timeStyle: "short"}) : "";
+async function loadAdmin() {
+  const box = $("#admin-body");
+  box.innerHTML = '<div class="empty">불러오는 중…</div>';
+  let o;
+  try { o = await api("admin_overview"); } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  const people = o.people.map((p) => `<tr><td><b>${esc(p.name)}</b>${p.role === "admin" ? ' <span class="badge accent">관리자</span>' : ""}</td>
+    <td>${p.jobs}</td><td>${p.done}</td><td>${p.failed || ""}</td><td>${p.active || ""}</td><td>${spent(p.seconds)}</td>
+    <td>${[p.hq && `고품질 ${p.hq}`, p.slides && `화면 ${p.slides}`].filter(Boolean).join(" · ")}</td><td>${p.shared || ""}</td><td>${when(p.last)}</td></tr>`).join("");
+  const recent = o.recent.map((j) => `<tr><td>${when(j.created)}</td><td>${esc(j.owner)}</td>
+    <td class="t"><span class="${j.status === "done" ? "link" : ""}" data-open="${esc(j.id)}">${esc(j.title)}</span>${j.private_pack ? " 🔒" : ""}${j.copied ? ' <span class="badge">사본</span>' : ""}</td>
+    <td><span class="chip ${esc(j.status)}">${STATUS[j.status] || esc(j.status)}</span></td><td>${esc(j.duration || "")}</td><td>${spent(j.took)}</td><td>${esc(j.server)}</td></tr>`).join("");
+  box.innerHTML = `<div class="hint">다 함께 쓰는 서비스라, 관리자는 운영을 위해 모든 작업 목록과 내용을 볼 수 있어요. 지금 공유 중인 전사본: <b>${o.shares}</b>건</div>
+    <h3 class="admin-h">사람별</h3><div class="tbl-wrap"><table class="tbl">
+      <tr><th>이름</th><th>작업</th><th>완료</th><th>실패</th><th>진행</th><th>변환한 길이</th><th>기능</th><th>공유</th><th>최근</th></tr>${people}</table></div>
+    <h3 class="admin-h">최근 작업</h3><div class="tbl-wrap"><table class="tbl">
+      <tr><th>시각</th><th>사람</th><th>제목</th><th>상태</th><th>길이</th><th>걸린 시간</th><th>서버</th></tr>${recent}</table></div>`;
+  box.querySelectorAll(".link[data-open]").forEach((el) => el.onclick = () => { $("#admin").close(); view(el.dataset.open); });
 }
 
 /* ---------- search ---------- */
