@@ -377,6 +377,8 @@
   .hint { font-size: 13px; color: var(--muted); background: var(--softer); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; }
   dialog.wide { width: min(980px, calc(100vw - 32px)); }
   .tbl-wrap { overflow-x: auto; margin: 6px 0 16px; }
+  .train-bar { height: 8px; border-radius: 4px; background: var(--line, #ddd); overflow: hidden; margin: 8px 0 6px; }
+  .train-bar > div { height: 100%; background: var(--accent, #3b82f6); }
   .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
   .tbl th, .tbl td { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
   .tbl th { color: var(--muted); font-weight: 600; border-top: 0; }
@@ -2112,6 +2114,12 @@ async function view(id) {
       ${segs && r.job.status === "done" && (me?.role === "admin" || r.job.owner === me?.id) ? `<button class="btn small accent" id="viewer-edit" title="음성을 들으면서 문장을 바로 고쳐요">✏️ 들으며 고치기</button>` : ""}
       ${r.shareable ? `<button class="btn small" id="viewer-share" title="다른 사람에게 이 전사본을 공유해요">📤 공유${r.shares?.length ? ` ${r.shares.length}` : ""}</button>` : ""}
       ${r.shared ? `<button class="btn small accent" id="viewer-copy" title="내 작업으로 복사해서 고칠 수 있어요">내 사본 만들기</button>` : ""}
+      ${segs && r.job.status === "done" && !r.shared && (me?.role === "admin" || r.job.owner === me?.id) && r.job.train_role !== "test"
+        ? `<button class="btn small${r.job.train_role === "review" ? " accent" : ""}" data-train="${r.job.train_role === "review" ? "" : "review"}"
+            title="끝까지 듣고 다 고쳤으면 눌러 주세요. 이 전사본 전체가 음성 인식 모델을 가르치는 재료가 돼요">${r.job.train_role === "review" ? "✅ 검수 완료됨" : "✅ 검수 완료"}</button>` : ""}
+      ${segs && r.job.status === "done" && me?.role === "admin"
+        ? `<button class="btn small${r.job.train_role === "test" ? " accent" : ""}" data-train="${r.job.train_role === "test" ? "" : "test"}"
+            title="다 고친 전사본을 시험지로 쓰면, 새 모델이 나올 때마다 이 강의로 정확도를 재요(학습에는 안 써요)">${r.job.train_role === "test" ? "🧪 시험지 (해제)" : "🧪 시험지로"}</button>` : ""}
       <button class="btn small" id="viewer-md">.md</button>
       ${r.job.has_audio ? `<button class="btn small" id="viewer-mp3" title="소리만 담은 MP3 (약 1시간에 29MB)">🎧 .mp3</button>` : ""}
       ${segs ? Object.keys(EXPORTS).map((k) => `<button class="btn small" data-export="${k}">.${k}</button>`).join("") : ""}</div></div>
@@ -2122,6 +2130,10 @@ async function view(id) {
   if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true, r.slides || "", r.bible || []);
   if ($("#viewer-share")) $("#viewer-share").onclick = () => openShare(r);
   if ($("#viewer-copy")) $("#viewer-copy").onclick = () => act(r.job, "copy");
+  document.querySelectorAll("[data-train]").forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    try { await api("train_mark", {id, role: b.dataset.train}); view(id); } catch (err) { alert(err.message); b.disabled = false; }
+  });
   if ($("#viewer-fix")) {
     // Remember the selection before the tap can clear it (phones), then open the dictionary with it filled in.
     let picked = "";
@@ -2215,11 +2227,32 @@ $("#open-admin").onclick = async () => { $("#admin").showModal(); await loadAdmi
 $("#close-admin").onclick = () => $("#admin").close();
 const spent = (s) => s >= 3600 ? `${Math.floor(s / 3600)}시간 ${Math.round(s % 3600 / 60)}분` : s >= 60 ? `${Math.round(s / 60)}분` : s ? `${s}초` : "";
 const when = (t) => t ? new Date(t * 1000).toLocaleString("ko-KR", {dateStyle: "short", timeStyle: "short"}) : "";
+/* 🧠 학습: how much corrected speech there is, and how each model did on the 시험지 */
+function trainHtml(t) {
+  const hours = (s) => `${(s / 3600).toFixed(1)}시간`;
+  const pct = Math.min(100, Math.round(t.learn_secs / t.target_secs * 100));
+  const pc = (v) => (v == null || Number.isNaN(v) ? "–" : `${(v * 100).toFixed(1)}%`);
+  const rows = t.evals.map((e) => `<tr><td>${when(e.created)}</td><td><b>${esc(e.label || e.model)}</b></td><td>${pc(e.cer)}</td>
+    <td>${e.terms_total ? `${e.terms_hit}/${e.terms_total}` : "–"}</td><td>${spent(e.run_secs)}</td>
+    <td>${e.in_use ? "<b>사용 중</b>" : e.can_use ? `<button class="btn small" data-model="${esc(e.id)}">이 모델로 교체</button>` : ""}</td></tr>`).join("");
+  return `<h3 class="admin-h">🧠 학습</h3>
+    <div class="hint">들으며 고치기로 고친 부분과 <b>✅ 검수 완료</b>한 전사본이 모델을 가르치는 재료로 쌓여요. 약 ${hours(t.target_secs)} 모이면
+      Colab의 <b>vid2md_train</b> 노트북으로 학습하고, <b>🧪 시험지</b>로 잰 결과가 나아졌을 때만 교체해요.</div>
+    <div class="train-bar"><div style="width:${pct}%"></div></div>
+    <div class="muted">학습 재료 <b>${hours(t.learn_secs)}</b> / ${hours(t.target_secs)} (전사본 ${t.learn_jobs}개, 검수 완료 ${t.review_jobs}개) ·
+      시험지 <b>${t.test_jobs}개</b> (${hours(t.test_secs)})${t.test_jobs ? "" : " — 다 고친 강의 2~3개를 🧪 시험지로 정해 주세요"} ·
+      지금 모델: <b>${t.model ? esc(t.model.label) : "기본 (large-v3-turbo)"}</b>
+      ${t.model ? '<button class="btn small ghost" data-model="">기본 모델로</button>' : ""}</div>
+    ${rows ? `<div class="tbl-wrap"><table class="tbl"><tr><th>시각</th><th>모델</th><th>글자 오류율</th><th>용어</th><th>걸린 시간</th><th></th></tr>${rows}</table></div>`
+      : '<div class="muted" style="margin-top:6px">아직 잰 결과가 없어요.</div>'}`;
+}
+
 async function loadAdmin() {
   const box = $("#admin-body");
   box.innerHTML = '<div class="empty">불러오는 중…</div>';
-  let o;
-  try { o = await api("admin_overview"); } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  let o, t = null;
+  try { [o, t] = await Promise.all([api("admin_overview"), api("train_stats").catch(() => null)]); }
+  catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
   const people = o.people.map((p) => `<tr><td><b>${esc(p.name)}</b>${p.role === "admin" ? ' <span class="badge accent">관리자</span>' : ""}</td>
     <td>${p.jobs}</td><td>${p.done}</td><td>${p.failed || ""}</td><td>${p.active || ""}</td><td>${spent(p.seconds)}</td>
     <td>${[p.hq && `고품질 ${p.hq}`, p.slides && `화면 ${p.slides}`].filter(Boolean).join(" · ")}</td><td>${p.shared || ""}</td><td>${when(p.last)}</td></tr>`).join("");
@@ -2230,8 +2263,15 @@ async function loadAdmin() {
     <h3 class="admin-h">사람별</h3><div class="tbl-wrap"><table class="tbl">
       <tr><th>이름</th><th>작업</th><th>완료</th><th>실패</th><th>진행</th><th>변환한 길이</th><th>기능</th><th>공유</th><th>최근</th></tr>${people}</table></div>
     <h3 class="admin-h">최근 작업</h3><div class="tbl-wrap"><table class="tbl">
-      <tr><th>시각</th><th>사람</th><th>제목</th><th>상태</th><th>길이</th><th>걸린 시간</th><th>서버</th></tr>${recent}</table></div>`;
+      <tr><th>시각</th><th>사람</th><th>제목</th><th>상태</th><th>길이</th><th>걸린 시간</th><th>서버</th></tr>${recent}</table></div>
+    ${t ? trainHtml(t) : ""}`;
   box.querySelectorAll(".link[data-open]").forEach((el) => el.onclick = () => { $("#admin").close(); view(el.dataset.open); });
+  box.querySelectorAll("[data-model]").forEach((b) => b.onclick = async () => {
+    const back = !b.dataset.model;
+    if (!confirm(back ? "작업 서버를 기본 모델로 되돌릴까요?" : "메인 작업 서버(GitHub·비공개 서브·Colab)가 이 학습 모델을 쓰게 할까요?\nSJAMES와 공개 서브는 그대로 기본 모델이에요.")) return;
+    b.disabled = true;
+    try { await api("train_model", back ? {} : {eval: b.dataset.model}); loadAdmin(); } catch (err) { alert(err.message); b.disabled = false; }
+  });
 }
 
 /* ---------- search ---------- */
