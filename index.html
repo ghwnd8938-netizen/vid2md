@@ -584,8 +584,8 @@
       </form>
       <details class="bulk" id="dict-bulk">
         <summary>여러 개 한 번에 붙여넣기</summary>
-        <textarea class="field" id="dict-text" placeholder="## 묶음 이름&#10;용어&#10;틀린 말 → 바른 말&#10;&#10;## 나만 볼 묶음 (비공개)&#10;용어"></textarea>
-        <div class="muted">한 줄에 하나씩. <b>## 이름</b>은 묶음(<b>## 이름 (비공개)</b>면 나만 보는 묶음), <b>틀린 말 → 바른 말</b>은 고쳐쓰기, 단어만 쓰면 힌트 용어예요.</div>
+        <textarea class="field" id="dict-text" placeholder="## 묶음 이름&#10;용어&#10;틀린 말 → 바른 말&#10;&#10;## 단어는 나만 볼 묶음 (비공개)&#10;용어"></textarea>
+        <div class="muted">한 줄에 하나씩. <b>## 이름</b>은 묶음(<b>## 이름 (비공개)</b>면 단어는 나만 보는 묶음), <b>틀린 말 → 바른 말</b>은 고쳐쓰기, 단어만 쓰면 힌트 용어예요.</div>
         <div class="actions"><button class="btn small accent" id="dict-import" type="button">넣기</button></div>
       </details>
       <div class="error" id="dict-error" style="margin-bottom:6px"></div>
@@ -924,6 +924,11 @@ async function loadDict() {
   if (dictTab === SUGG) return renderSuggestions();
   const rows = r.rules.filter((x) => dictTab === "*" || x.group === (dictTab || ""));
   const box = $("#dict-list"); box.innerHTML = "";
+  if (!r.can_edit && privateGroups.includes(dictTab)) {
+    // A private pack: friends may pick it when converting, but only the admin sees its words.
+    box.innerHTML = `<div class="empty">🔒 비공개 묶음이에요. 변환할 때 '용어 묶음'에서 골라 쓸 수 있지만, 안의 단어는 관리자만 볼 수 있어요.</div>`;
+    return;
+  }
   const remove = (id) => async () => { try { await api("dict_remove", {id}); loadDict(); } catch (err) { alert(err.message); } };
   const x = (id) => (r.can_edit ? `<button type="button" data-id="${esc(id)}" title="지우기">✕</button>` : "");
   const terms = rows.filter((t) => !t.wrong);
@@ -956,10 +961,10 @@ async function loadDict() {
   if (dictTab && dictTab !== "*" && r.can_edit) {
     const lock = document.createElement("label"); lock.className = "toggle"; lock.style.marginTop = "8px";
     lock.innerHTML = `<input type="checkbox" ${privateGroups.includes(dictTab) ? "checked" : ""}>
-      <span class="t">🔒 비공개 묶음<small>켜면 나(관리자)만 보고 고를 수 있어요. 친구들 화면에는 묶음도 단어도 안 보여요.</small></span>`;
+      <span class="t">🔒 비공개 묶음<small>켜면 단어는 나(관리자)만 보고 고칠 수 있어요. 친구들은 묶음 이름만 보고 변환할 때 골라 쓸 수 있어요.</small></span>`;
     lock.querySelector("input").onchange = async (e) => {
       // Making a private pack public shows it to everyone, so it takes a deliberate confirmation.
-      if (!e.target.checked && !confirm(`'${dictTab}' 묶음을 공개로 바꿀까요?\n친구들도 이 묶음과 단어를 볼 수 있게 됩니다.`)) {
+      if (!e.target.checked && !confirm(`'${dictTab}' 묶음을 공개로 바꿀까요?\n친구들도 이 묶음의 단어를 볼 수 있게 됩니다.`)) {
         e.target.checked = true; return;
       }
       try { await api("dict_group_private", {group: dictTab, private: e.target.checked}); loadDict(); }
@@ -1007,7 +1012,7 @@ $("#dict-group").onchange = async () => {
   if ($("#dict-group").value !== "__new") return;
   const name = await askText("새 묶음 이름", "", "예: 강의, 회의");
   if (!name) { $("#dict-group").value = ""; return; }
-  if (confirm("나만 보는 비공개 묶음으로 만들까요?\n(확인: 비공개 · 취소: 친구들도 볼 수 있는 묶음)")) newPrivate[name] = true;
+  if (confirm("비공개 묶음으로 만들까요?\n(확인: 단어는 나만 보고, 친구들은 이름만 보고 골라 써요 · 취소: 친구들도 단어를 볼 수 있는 묶음)")) newPrivate[name] = true;
   const opt = document.createElement("option"); opt.value = name; opt.textContent = newPrivate[name] ? `🔒 ${name}` : name;
   $("#dict-group").insertBefore(opt, $("#dict-group").lastElementChild); $("#dict-group").value = name;
 };
