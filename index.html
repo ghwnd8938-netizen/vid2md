@@ -504,7 +504,7 @@
                title="대시보드 목록, 전사본 제목, 파일 이름에 쓰여요. 나중에 ✎로 바꿀 수도 있어요">
         <input class="field" type="text" id="prompt" placeholder="이 영상에 나오는 용어 (선택) · 예: Ghidra, Notion"
                title="용어 사전에 있는 말은 따로 적지 않아도 자동으로 들어가요">
-        <select class="field" id="glossary" hidden title="이 영상 주제의 용어 묶음을 고르면 그 단어들이 음성 인식 힌트로 들어가요">
+        <select class="field" id="glossary" hidden title="이 영상 주제의 용어 묶음을 고르면 그 묶음의 고쳐쓰기가 적용돼요 (🔒 묶음은 소리가 공개 서버로 가지 않게도 해요)">
           <option value="">용어 묶음 없음</option>
         </select>
         <label class="toggle" id="force-wrap" hidden><input type="checkbox" id="force">
@@ -575,8 +575,8 @@
 <dialog id="dict">
   <div class="dlg-head"><b>📖 용어 사전</b><button class="btn small ghost" id="close-dict">닫기</button></div>
   <div class="dlg-body">
-    <div class="hint">음성 인식이 자주 틀리는 말을 바른 말로 바꿔 줘요. 새 전사본에 자동으로 적용되고, 바른 말은 음성 인식에 힌트로도 들어가서
-      처음부터 덜 틀리게 해요. 사람이 올린 자막과 제목은 바꾸지 않아요.</div>
+    <div class="hint">음성 인식이 자주 틀리는 말을 바른 말로 바꿔 줘요. 받아쓴 뒤 새 전사본에 자동으로 적용돼요.
+      사람이 올린 자막과 제목은 바꾸지 않아요. <span id="dict-hints-off" hidden>(음성 인식 힌트는 꺼 두었어요: 시험에서 힌트가 문장을 통째로 빠뜨리는 일이 있었어요.)</span></div>
     <div id="dict-edit" hidden>
       <form class="dict-form" id="dict-form">
         <input class="field" id="dict-wrong" placeholder="틀린 말 (비우면 힌트 용어로만)" autocomplete="off">
@@ -936,7 +936,8 @@ async function loadDict() {
   const terms = rows.filter((t) => !t.wrong);
   // A pack's words go to the speech model in this order until its prompt budget is full.
   let hinted = null;
-  if (dictTab && dictTab !== "*") {
+  $("#dict-hints-off").hidden = r.hints !== false;
+  if (dictTab && dictTab !== "*" && r.hints !== false) {
     const words = [...new Set(rows.map((t) => t.right))], n = hintFit(words);
     hinted = new Set(words.slice(0, n));
     const note = document.createElement("div"); note.className = "hint-note" + (n < words.length ? " full" : "");
