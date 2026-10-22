@@ -939,7 +939,7 @@ async function loadDict() {
     hinted = new Set(words.slice(0, n));
     const note = document.createElement("div"); note.className = "hint-note" + (n < words.length ? " full" : "");
     note.innerHTML = n < words.length
-      ? `💡 힌트로 쓰이는 단어: <b>앞 ${n}개</b> / 전체 ${words.length}개. 뒤쪽 ${words.length - n}개(흐리게 표시)는 힌트 공간이 모자라 고쳐쓰기로만 쓰여요. 중요한 단어는 다른 묶음으로 나눠 보세요.`
+      ? `💡 전체 ${words.length}개로 힌트 자리(약 ${n}개)보다 커요. 이 묶음을 고르면 녹음 몇 군데를 먼저 듣고 <b>들린 단어</b>를 힌트 앞에 놓아요(1분 반쯤 더 걸림). 아무것도 안 들리면 앞 ${n}개를 써요.`
       : `💡 힌트로 쓰이는 단어: <b>${n}개 전부</b> (힌트 공간 약 ${Math.round(hintUse(words) / HINT_TOKENS * 100)}% 사용)`;
     box.appendChild(note);
   }
