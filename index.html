@@ -1686,7 +1686,7 @@ async function downloadMp3(job, btn) {
 /* ---------- 들으며 고치기: the MP3 next to the timed lines; edit a line in place, save, and the
    corrections are compared with the machine's words on the server (suggestions for the dictionary). */
 let editorDirty = false;
-function openEditor(job, segs, aiTerms, aiPrivate, slides) {
+function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
   const rows = segs.map((row, i) => ({i, start: Number(row[0]) || 0, end: Number(row[1]) || 0, text: String(row[2] || ""), saved: String(row[2] || "")}));
   const starts = rows.map((r) => r.start);
   editorDirty = false;
@@ -1698,6 +1698,7 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides) {
       <select class="move" id="ed-rate" title="재생 속도"><option value="1">1배</option><option value="1.25">1.25배</option><option value="1.5">1.5배</option><option value="2">2배</option></select>
       <label class="muted" style="font-size:12.5px;display:flex;gap:4px;align-items:center"><input type="checkbox" id="ed-follow" checked>따라가기</label>
       ${typeof aiTerms === "string" ? `<button class="btn small" id="ed-ai" type="button" title="강의 자료(PDF·PPT·텍스트)를 넣으면 잘못 받아쓴 용어 후보를 찾아 줘요">🤖 자료로 용어 후보</button>` : ""}
+      ${bible?.length ? `<button class="btn small" id="ed-bible" type="button" title="받아쓴 글을 개역한글 성경과 대조했어요">📖 성경 대조 ${bible.length}</button>` : ""}
       <span class="spacer"></span>
       <span class="muted" id="ed-status" style="font-size:12.5px"></span>
       <button class="btn small primary" id="ed-save" disabled style="padding:6px 14px;font-size:13px">저장</button>
@@ -1713,6 +1714,11 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides) {
         <span class="muted" style="font-size:12px">자료와 전사본 글자가 Claude(Haiku)로 보내져요. 🔒 비공개 용어는 가려서 보내요. 대외비 자료는 넣지 마세요.</span></div>
       ${aiPrivate ? `<div class="muted" style="font-size:12px">🔒 비공개 용어 묶음을 쓴 작업이에요. 묶음의 단어는 □□로 가리지만 문장 내용은 보내져요. 후보 찾기를 누르면 한 번 더 물어봐요.</div>` : ""}
       <div id="ai-list"></div>
+    </div>
+    <div class="ai-box" id="bible-box" hidden>
+      <div><b>📖 성경 대조</b> <span class="muted" style="font-size:12.5px">받아쓴 글을 개역한글 성경과 비교했어요. 거의 그대로 읽은 구절과 장 앞의 책 이름은
+        이미 고쳐 두었고(되돌릴 수 있어요), 나머지는 골라서 적용하세요. 적용하면 노란 줄이 되고 <b>저장</b>을 눌러야 반영돼요.</span></div>
+      <div id="bible-list"></div>
     </div>
     <audio id="ed-audio" preload="auto"></audio>
     <div id="ed-rows"></div></div>`;
@@ -1841,6 +1847,45 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides) {
         list.querySelectorAll(".ai-c").forEach((el) => apply(r.candidates[Number(el.dataset.k)], el));
         markDirty();
       };
+    });
+  }
+  // 📖 성경 대조: what the worker found next to the Bible. Sure fixes are in already (undo puts the words back).
+  if ($("#ed-bible")) {
+    $("#ed-bible").onclick = () => { $("#bible-box").hidden = !$("#bible-box").hidden; };
+    const setLine = (k, text) => {
+      const r = rows[k];
+      if (!r) return;
+      r.text = text;
+      rowEls[k].querySelector(".ed-txt").innerText = text;
+      rowEls[k].classList.toggle("edited", r.text !== r.saved);
+      markDirty();
+    };
+    const blist = $("#bible-list");
+    blist.innerHTML = bible.map((f, k) => {
+      const line = esc(rows[f.line]?.text || "");
+      const what = f.kind === "verse"
+        ? `<b>${esc(f.ref)}</b> <span style="font-size:13px">${esc(f.text)}</span>`
+        : `<s>${esc(f.wrong)}</s> → <b>${esc(f.right)}</b>`;
+      const act = f.auto ? `<span class="badge">자동으로 고침</span><button class="btn small ghost" data-act="undo" type="button">되돌리기</button>`
+        : f.kind === "verse" && !f.whole ? `<span class="muted" style="font-size:12px">${f.lines > 1 ? `${f.lines}줄에 걸친 구절` : "구절의 일부"} · 참고</span>`
+        : `<button class="btn small accent" data-act="ok" type="button">적용</button><button class="btn small ghost" data-act="no" type="button">무시</button>`;
+      return `<div class="ai-c" data-k="${k}"><button class="ed-t" type="button">${fmtTime((rows[f.line]?.start || 0) * 1000)}</button>
+        ${what}<span class="muted" style="font-size:12px;overflow-wrap:anywhere">${f.auto ? "" : line}</span><span class="spacer"></span>${act}</div>`;
+    }).join("");
+    blist.querySelectorAll(".ai-c").forEach((el) => {
+      const f = bible[Number(el.dataset.k)];
+      el.querySelector(".ed-t").onclick = () => { rowEls[f.line]?.scrollIntoView({block: "center", behavior: "smooth"}); play(rows[f.line]?.start); };
+      el.querySelector('[data-act="no"]')?.addEventListener("click", () => el.remove());
+      el.querySelector('[data-act="ok"]')?.addEventListener("click", () => {
+        const r = rows[f.line];
+        if (r) setLine(f.line, f.kind === "verse" ? f.text : r.text.replace(f.wrong, f.right));
+        el.remove();
+      });
+      el.querySelector('[data-act="undo"]')?.addEventListener("click", () => {
+        const r = rows[f.line];
+        if (r) setLine(f.line, f.kind === "verse" ? f.was : r.text.replace(f.right, f.wrong));
+        el.remove();
+      });
     });
   }
   // Save / close
@@ -2069,7 +2114,7 @@ async function view(id) {
     ${limits ? `<ul class="limits">${limits}</ul>` : ""}${toHtml(body)}`;
   $("#viewer-md").onclick = () => downloadMd(id);
   if ($("#viewer-mp3")) $("#viewer-mp3").onclick = () => downloadMp3(r.job, $("#viewer-mp3"));
-  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true, r.slides || "");
+  if ($("#viewer-edit")) $("#viewer-edit").onclick = () => openEditor(r.job, segs, r.ai_terms, r.ai_private === true, r.slides || "", r.bible || []);
   if ($("#viewer-share")) $("#viewer-share").onclick = () => openShare(r);
   if ($("#viewer-copy")) $("#viewer-copy").onclick = () => act(r.job, "copy");
   if ($("#viewer-fix")) {
