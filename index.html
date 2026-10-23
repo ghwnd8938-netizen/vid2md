@@ -649,7 +649,7 @@ const store = {
   set(k, v) { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 let token = store.get("vid2md.token"), me = null, jobs = [], filter = "all", tab = "file", picked = null;
-let pollTimer = null, waitTimer = null, openId = null;
+let pollTimer = null, waitTimer = null, openId = null, queueTimer = null, queueInfo = null;
 // Folders in "내 작업": "*" shows everything, "" the jobs in no folder, otherwise a folder id.
 let folders = [], folder = store.get("vid2md.folder") || "*";
 // 공유: jobs others shared with me (a chip of their own), and the shares that wait on my answer.
@@ -675,7 +675,7 @@ async function api(action, params = {}) {
 
 /* ---------- login ---------- */
 function showLogin() {
-  clearTimeout(pollTimer); appLoginStop();
+  clearTimeout(pollTimer); clearTimeout(queueTimer); queueInfo = null; appLoginStop();
   $("#app").hidden = true; $("#who").hidden = true; $("#login").hidden = false;
   $("#login-idle").hidden = false; $("#login-wait").hidden = true; $("#login-app").hidden = true;
   prepareLogin();
@@ -1429,14 +1429,43 @@ document.querySelectorAll("[data-filter]").forEach((b) => b.onclick = () => {
 });
 
 async function refresh() {
-  clearTimeout(pollTimer);
+  clearTimeout(pollTimer); clearTimeout(queueTimer);
   try {
     const r = await api("jobs");
     jobs = r.jobs; folders = r.folders || []; sharedJobs = r.shared || []; inbox = r.inbox || [];
+    queueInfo = r.queue || null; // with the queue: progress is read there, with a short pass for these jobs
   } catch { return; }
   renderInbox();
   renderJobs();
-  if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) pollTimer = setTimeout(refresh, 8000);
+  if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) {
+    pollTimer = setTimeout(refresh, queueInfo ? 30000 : 8000);
+    if (queueInfo) queueTimer = setTimeout(pollQueue, 3000);
+  }
+}
+
+/** Progress of the running jobs, from the queue (often, and without the backend). A job that left the queue is done
+ *  or failed: the list is loaded again. */
+async function pollQueue() {
+  clearTimeout(queueTimer);
+  if (!queueInfo) return;
+  try {
+    const res = await fetch(`${queueInfo.url}?t=${encodeURIComponent(queueInfo.pass)}`, { cache: "no-store" });
+    if (res.ok) {
+      const states = (await res.json()).states || {};
+      let changed = false;
+      for (const j of jobs) {
+        if (!["queued", "running"].includes(j.status)) continue;
+        const s = states[j.id];
+        if (!s) return refresh();
+        if (j.progress !== s.progress || j.stage !== s.stage || j.status !== s.status) {
+          Object.assign(j, { progress: s.progress, stage: s.stage, status: s.status === "done" ? j.status : s.status });
+          changed = true;
+        }
+      }
+      if (changed) renderJobs();
+    }
+  } catch {}
+  queueTimer = setTimeout(pollQueue, 4000);
 }
 
 /* The folder row scrolls sideways with a mouse too: drag it, or turn the wheel. While a job card is dragged
@@ -2265,8 +2294,21 @@ async function loadAdmin() {
       <tr><th>이름</th><th>작업</th><th>완료</th><th>실패</th><th>진행</th><th>변환한 길이</th><th>기능</th><th>공유</th><th>최근</th></tr>${people}</table></div>
     <h3 class="admin-h">최근 작업</h3><div class="tbl-wrap"><table class="tbl">
       <tr><th>시각</th><th>사람</th><th>제목</th><th>상태</th><th>길이</th><th>걸린 시간</th><th>서버</th></tr>${recent}</table></div>
-    ${t ? trainHtml(t) : ""}`;
+    ${t ? trainHtml(t) : ""}
+    <h3 class="admin-h">🚦 작업 대기열 (SJAMES)</h3>
+    <div class="hint">켜면 작업 서버들이 일 가져가기·진행률·긴 녹음 나누기를 SJAMES의 대기열에서 해요(Apps Script의 하루 한도를 아껴요).
+      끄면 몇 분 안에 원래대로 돌아와요. 작업이 없을 때 바꾸는 게 안전해요.</div>
+    <form class="invite" id="queue-form"><input class="field" id="queue-url" placeholder="https://… (비우면 끔)" value="${esc(o.queue || "")}">
+      <button class="btn small accent">${o.queue ? "바꾸기" : "켜기"}</button></form>
+    <div class="muted" id="queue-status">${o.queue ? "🟢 사용 중" : "⚪ 꺼짐 (Apps Script가 직접 배정)"}</div>`;
   box.querySelectorAll(".link[data-open]").forEach((el) => el.onclick = () => { $("#admin").close(); view(el.dataset.open); });
+  $("#queue-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const url = $("#queue-url").value.trim();
+    if (!confirm(url ? `작업 대기열을 켤까요?\n${url}` : "작업 대기열을 끌까요?")) return;
+    $("#queue-status").textContent = "확인하는 중…";
+    try { await api("queue_set", {url}); loadAdmin(); } catch (err) { $("#queue-status").textContent = err.message; }
+  };
   box.querySelectorAll("[data-model]").forEach((b) => b.onclick = async () => {
     const back = !b.dataset.model;
     if (!confirm(back ? "작업 서버를 기본 모델로 되돌릴까요?" : "메인 작업 서버(GitHub·비공개 서브·Colab)가 이 학습 모델을 쓰게 할까요?\nSJAMES와 공개 서브는 그대로 기본 모델이에요.")) return;
