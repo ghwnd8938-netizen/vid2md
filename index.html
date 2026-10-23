@@ -509,8 +509,6 @@
         </select>
         <label class="toggle" id="force-wrap" hidden><input type="checkbox" id="force">
           <span class="t">자막이 있어도 음성 인식<small>YouTube 자막이 부정확할 때</small></span></label>
-        <label class="toggle"><input type="checkbox" id="opt-external">
-          <span class="t">외부 서버에서 처리해도 돼요<small>더 빨리 끝나요 · 영상은 안 가고 음성만 가요 (처리 뒤 바로 지워져요) · 끄면 다음에도 꺼져 있어요</small></span></label>
         <details class="opts" id="opts">
           <summary>추가 기능</summary>
           <div class="stack">
@@ -997,7 +995,6 @@ async function loadDict() {
   }
 }
 $("#glossary").addEventListener("change", (e) => { e.target.dataset.touched = "1"; });
-$("#opt-external").addEventListener("change", (e) => store.set("vid2md.external", e.target.checked ? null : "off"));
 function fillGroups(groups) {
   const keep = $("#dict-group").value;
   $("#dict-group").innerHTML = `<option value="">공통 (모든 영상)</option>` + groups.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}</option>`).join("")
@@ -1078,9 +1075,6 @@ async function enter() {
   $("#who-admin").hidden = me.role !== "admin";
   $("#open-users").hidden = me.role !== "admin";
   $("#open-admin").hidden = me.role !== "admin";
-  // On unless this browser last chose otherwise. (A private glossary pack keeps a job inside either way; the
-  // backend checks that.)
-  $("#opt-external").checked = store.get("vid2md.external") !== "off";
   refresh();
   if (me.role === "admin") countPending();
   const m = location.hash.match(/job=([\w-]+)/);
@@ -1158,7 +1152,7 @@ $("#new-form").onsubmit = async (e) => {
   e.preventDefault(); $("#new-error").textContent = "";
   const prompt = $("#prompt").value, title = $("#title").value.trim();
   const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
-                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value, external: $("#opt-external").checked,
+                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value,
                    hq: $("#opt-hq").checked, slides: $("#opt-slides").checked};
   $("#submit").disabled = true;
   try {
@@ -1223,7 +1217,7 @@ async function startRecording() {
     return;
   }
   const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
-                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value, external: $("#opt-external").checked,
+                   denoise: $("#opt-denoise").checked, glossary: $("#glossary").value,
                    hq: $("#opt-hq").checked, slides: $("#opt-slides").checked};
   let job;
   try { job = await api("rec_start", {ext: format.ext, title: $("#title").value.trim(), prompt: $("#prompt").value, options,
@@ -2311,7 +2305,7 @@ async function loadAdmin() {
   };
   box.querySelectorAll("[data-model]").forEach((b) => b.onclick = async () => {
     const back = !b.dataset.model;
-    if (!confirm(back ? "작업 서버를 기본 모델로 되돌릴까요?" : "메인 작업 서버(GitHub·비공개 서브·Colab)가 이 학습 모델을 쓰게 할까요?\nSJAMES와 공개 서브는 그대로 기본 모델이에요.")) return;
+    if (!confirm(back ? "작업 서버를 기본 모델로 되돌릴까요?" : "메인 작업 서버(GitHub·비공개 서브)가 이 학습 모델을 쓰게 할까요?\nSJAMES와 공개 서브는 그대로 기본 모델이에요.")) return;
     b.disabled = true;
     try { await api("train_model", back ? {} : {eval: b.dataset.model}); loadAdmin(); } catch (err) { alert(err.message); b.disabled = false; }
   });
