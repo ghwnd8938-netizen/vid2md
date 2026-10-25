@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#ffffff">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23ff5a36'/%3E%3Cpath d='M12 9.5v13l10-6.5z' fill='white'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23005dac'/%3E%3Cpath d='M12 9.5v13l10-6.5z' fill='white'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <title>vid2md</title>
 <style>
@@ -13,7 +13,7 @@
     color-scheme: light;
     --bg: #ffffff; --soft: #f6f6f4; --softer: #fafaf9; --ink: #141413; --text: #2b2b29; --muted: #75746f; --faint: #a9a8a2;
     --line: #ecebe7; --line-strong: #dddcd6;
-    --accent: #ff5a36; --accent-ink: #ffffff; --accent-soft: #fff0eb; --accent-deep: #e8431f;
+    --accent: #005dac; --accent-ink: #ffffff; --accent-soft: #e8f1fa; --accent-deep: #00498a;
     --ok: #12825b; --ok-soft: #e6f5ee; --warn: #a76a00; --warn-soft: #fff5de; --bad: #c8321f; --bad-soft: #fdecea;
     --mark: #ffe7a3; --tg: #2aabee;
     --r: 16px; --shadow: 0 1px 2px rgba(20,20,19,.04), 0 8px 24px -12px rgba(20,20,19,.10);
@@ -31,7 +31,7 @@
   /* ---------- shared bits ---------- */
   .logo { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; font-size: 18px; color: var(--ink); letter-spacing: -0.03em; }
   .logo-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center;
-    box-shadow: 0 6px 14px -6px rgba(255,90,54,.7); }
+    box-shadow: 0 6px 14px -6px rgba(0,93,172,.7); }
   .logo-mark svg { width: 14px; height: 14px; margin-left: 2px; }
   .btn { border: 1px solid var(--line-strong); background: var(--bg); border-radius: 11px; padding: 8px 14px; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.3; font-weight: 600; font-size: 14px;
@@ -46,7 +46,7 @@
   .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
   .btn.ghost:hover { background: var(--soft); color: var(--ink); }
   .btn:disabled { opacity: .45; cursor: default; transform: none; }
-  .btn:focus-visible, .field:focus { outline: none; box-shadow: 0 0 0 3px rgba(255,90,54,.22); border-color: var(--accent); }
+  .btn:focus-visible, .field:focus { outline: none; box-shadow: 0 0 0 3px rgba(0,93,172,.22); border-color: var(--accent); }
   .field { width: 100%; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--bg);
     transition: border-color .15s, box-shadow .15s; }
   .field::placeholder { color: var(--faint); }
@@ -57,14 +57,14 @@
     display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
   .badge.accent { background: var(--accent-soft); color: var(--accent-deep); }
   .avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px;
-    color: #fff; background: linear-gradient(135deg, #ff8a5b, #ff5a36); flex: none; }
+    color: #fff; background: linear-gradient(135deg, #4a90d9, #005dac); flex: none; }
 
   /* ---------- login ---------- */
   .login-page { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; position: relative; overflow: hidden; }
   .login-page::before { content: ""; position: absolute; inset: -20% -10% auto auto; width: 70vmax; height: 70vmax; z-index: -1;
-    background: radial-gradient(closest-side, rgba(255,90,54,.16), rgba(255,90,54,0)); }
+    background: radial-gradient(closest-side, rgba(0,93,172,.16), rgba(0,93,172,0)); }
   .login-page::after { content: ""; position: absolute; inset: auto auto -30% -20%; width: 60vmax; height: 60vmax; z-index: -1;
-    background: radial-gradient(closest-side, rgba(255,184,107,.18), rgba(255,184,107,0)); }
+    background: radial-gradient(closest-side, rgba(90,169,230,.18), rgba(90,169,230,0)); }
   .login-top { padding: 22px 28px; }
   .login-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center;
     max-width: 1080px; width: 100%; margin: 0 auto; padding: 24px 28px 48px; }
@@ -192,7 +192,7 @@
   .toggle .t small { display: block; color: var(--muted); font-size: 12px; }
   .field.tiny { width: 76px; padding: 6px 10px; border-radius: 9px; font-size: 13px; }
   .bar { height: 6px; background: var(--soft); border-radius: 99px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #ffb36b, var(--accent));
+  .bar > i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #5aa9e6, var(--accent));
     transition: width .4s; }
 
   .job { padding: 14px 4px; border-top: 1px solid var(--line); display: grid; gap: 7px; }
@@ -259,7 +259,7 @@
     margin-right: 8px; vertical-align: 4px; animation: blink 1.2s ease-in-out infinite; }
   .rec.paused .rec-info b::before { animation: none; opacity: .35; }
   .rec-level { width: 100%; max-width: 260px; height: 6px; background: var(--soft); border-radius: 99px; overflow: hidden; }
-  .rec-level i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffb36b, var(--accent)); border-radius: 99px; transition: width .08s; }
+  .rec-level i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #5aa9e6, var(--accent)); border-radius: 99px; transition: width .08s; }
   .rec-note { font-size: 12.5px; margin-top: 8px; line-height: 1.5; }
   .chip.recording { color: var(--bad); background: var(--bad-soft); }
   .chip.recording::before { animation: blink 1.2s ease-in-out infinite; }
@@ -359,7 +359,7 @@
   .ai-c s { color: var(--muted); }
   .ai-c b { color: var(--ink); }
   .ai-c .spacer { flex: 1; }
-  .ed-txt:focus { background: var(--bg); box-shadow: 0 0 0 2px rgba(255,90,54,.35); }
+  .ed-txt:focus { background: var(--bg); box-shadow: 0 0 0 2px rgba(0,93,172,.35); }
   .sugg { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .sugg b { color: var(--ink); }
   .sugg .meta { font-size: 12px; color: var(--muted); }
