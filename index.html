@@ -1492,7 +1492,8 @@ async function refresh() {
   renderInbox();
   renderJobs();
   if (jobs.some((j) => ["queued", "running", "uploading"].includes(j.status))) {
-    pollTimer = setTimeout(refresh, queueInfo ? 30000 : 8000);
+    // With the queue the list comes back by itself when a job leaves it (pollQueue); this only renews the pass.
+    pollTimer = setTimeout(refresh, queueInfo ? 120000 : 8000);
     if (queueInfo) queueTimer = setTimeout(pollQueue, 3000);
   }
 }
