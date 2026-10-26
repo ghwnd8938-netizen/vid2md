@@ -68,7 +68,7 @@
   .login-page::after { content: ""; position: absolute; inset: auto auto -30% -20%; width: 60vmax; height: 60vmax; z-index: -1;
     background: radial-gradient(closest-side, rgba(90,169,230,.18), rgba(90,169,230,0)); }
   .login-top { padding: 22px 28px; }
-  .login-main { display: grid; grid-template-columns: minmax(0, 560px); justify-content: center; gap: 56px; align-items: center;
+  .login-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center;
     max-width: 1080px; width: 100%; margin: 0 auto; padding: 24px 28px 48px; }
   .hero h1 { font-size: clamp(34px, 5.4vw, 56px); line-height: 1.12; letter-spacing: -0.045em; margin: 0 0 18px; color: var(--ink); font-weight: 800; }
   .hero h1 em { font-style: normal; color: var(--accent); }
@@ -431,8 +431,15 @@
         </div>
         <div class="error" id="login-error" style="margin-top:12px"></div>
       </div>
-      <div class="features"><span>🎬 YouTube · 파일</span><span>⏱ 타임스탬프</span><span>🗣 화자 구분</span><span>📄 md · srt · vtt · txt</span></div>
+      <div class="features"><span>🎬 YouTube · 파일</span><span>⏱ 타임스탬프</span><span>📄 md · srt · vtt · txt</span></div>
     </section>
+    <aside class="preview" aria-hidden="true">
+      <div class="bar-top"><i></i><i></i><i></i></div>
+      <div class="facts"><span>음성 인식</span><span>길이 48:12</span></div>
+      <p><code>00:00</code> 오늘은 MCP 서버를 직접 만들어 보면서 도구 설계에서 중요한 점을 정리해 보겠습니다.</p>
+      <p><code>00:42</code> 처음 만들 때 가장 많이 하는 실수가 뭔가요?</p>
+      <p><code>01:05</code> 도구가 너무 많은 일을 한 번에 하려는 거예요. 입력과 출력을 작게 나누는 게…</p>
+    </aside>
   </div>
   <div class="login-foot">서울야고보지파 · 실력이 바로서야</div>
 </div>
@@ -1078,6 +1085,8 @@ async function enter() {
   document.querySelector('[data-tab="drive"]').hidden = me.role !== "admin";
   // Hint words typed per video go nowhere while hints are off (HINTS): the admin's only, not a puzzle for others.
   $("#prompt").hidden = me.role !== "admin";
+  // 화자 구분 needs the GitHub worker and a speaker model token: the admin's only.
+  $("#opt-diarize").closest("label").hidden = me.role !== "admin";
   refresh();
   if (me.role === "admin") countPending();
   const m = location.hash.match(/job=([\w-]+)/);
