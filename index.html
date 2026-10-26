@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23005dac'/%3E%3Cpath d='M12 9.5v13l10-6.5z' fill='white'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<title>vid2md</title>
+<title>혁신의 한걸음 · 서울야고보지파</title>
 <style>
   :root {
     color-scheme: light;
@@ -33,6 +33,8 @@
   .logo-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--accent); display: grid; place-items: center;
     box-shadow: 0 6px 14px -6px rgba(0,93,172,.7); }
   .logo-mark svg { width: 14px; height: 14px; margin-left: 2px; }
+  .logo-text { display: flex; flex-direction: column; line-height: 1.15; }
+  .logo-text small { font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
   .btn { border: 1px solid var(--line-strong); background: var(--bg); border-radius: 11px; padding: 8px 14px; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.3; font-weight: 600; font-size: 14px;
     color: var(--ink); text-decoration: none; transition: background .15s, border-color .15s, transform .1s, box-shadow .15s; }
@@ -134,7 +136,7 @@
     .who .btn.small { padding: 6px 9px; }
     #logout { padding: 6px 4px; }
   }
-  @media (max-width: 420px) { .logo { font-size: 0; gap: 0; } }
+  @media (max-width: 420px) { .top .logo-text { display: none; } .top .logo { gap: 0; } }
   .dot-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: #fff;
     font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
   main.app { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; display: grid; gap: 24px;
@@ -397,10 +399,10 @@
 
 <!-- ======================= login ======================= -->
 <div class="login-page" id="login" hidden>
-  <div class="login-top"><span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span>vid2md</span></div>
+  <div class="login-top"><span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span><span class="logo-text"><small>서울야고보지파</small>혁신의 한걸음</span></span></div>
   <div class="login-main">
     <section class="hero">
-      <h1>영상을 글로,<br><em>한 번에.</em></h1>
+      <h1>말씀을 데이터로,<br><em>혁신의 한걸음.</em></h1>
       <p class="lead">YouTube 링크나 영상·음성 파일을 올리면<br>시간이 표시된 깔끔한 문서로 바꿔 드려요.</p>
       <div class="signin">
         <div id="login-idle">
@@ -441,13 +443,13 @@
       <p><code>01:05</code> <span class="spk s1">화자 1</span> 도구가 너무 많은 일을 한 번에 하려는 거예요. 입력과 출력을 작게 나누는 게…</p>
     </aside>
   </div>
-  <div class="login-foot">vid2md · 영상을 글로</div>
+  <div class="login-foot">서울야고보지파 · 혁신의 한걸음</div>
 </div>
 
 <!-- ======================= app ======================= -->
 <header class="top" id="who" hidden>
   <div class="top-in">
-    <span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span>vid2md</span>
+    <span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span><span class="logo-text"><small>서울야고보지파</small>혁신의 한걸음</span></span>
     <div class="spacer"></div>
     <div class="who">
       <button class="btn small" id="open-dict">📖 용어 사전</button>
@@ -837,6 +839,9 @@ const familyOf = (g, groups = dictGroups) => {
   return m ? groups.filter((x) => x === m[1] || x.startsWith(m[1] + " ")) : null;
 };
 const AUTO = "*auto*"; // the worker listens to a few parts first and picks words from the whole dictionary
+// The pack a new job starts with: the S family while S lectures are being gathered (the data is what it is for);
+// "자동 선택" where there is no such family.
+const DEFAULT_PACK = "S *";
 const packLabel = (g) => {
   if (g === AUTO) return "🤖 자동 선택";
   const family = familyOf(g);
@@ -1002,11 +1007,14 @@ function fillGroups(groups) {
   $("#dict-group").value = groups.includes(dictTab) ? dictTab : (groups.includes(keep) ? keep : "");
   const pick = $("#glossary"), chosen = pick.value;
   const all = [AUTO, ...families(groups), ...groups];
-  pick.innerHTML = all.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}${g === AUTO ? " (추천)" : ""}</option>`).join("")
+  const start = all.includes(DEFAULT_PACK) ? DEFAULT_PACK : AUTO;
+  pick.innerHTML = all.map((g) => `<option value="${esc(g)}">${esc(packLabel(g))}${g === start ? " (기본)" : ""}</option>`).join("")
     + `<option value="">용어 묶음 없음</option>`;
-  // "자동 선택" unless the person picked something else in this visit.
-  pick.value = pick.dataset.touched && (all.includes(chosen) || chosen === "") ? chosen : AUTO;
-  pick.hidden = !groups.length;
+  // The S family (or "자동 선택") unless the person picked something else in this visit.
+  pick.value = pick.dataset.touched && (all.includes(chosen) || chosen === "") ? chosen : start;
+  // Members don't choose: their lectures go in with the S family (what the training data is gathered for). The admin
+  // still picks.
+  pick.hidden = !groups.length || me?.role !== "admin";
 }
 $("#dict-group").onchange = async () => {
   if ($("#dict-group").value !== "__new") return;
@@ -1075,6 +1083,10 @@ async function enter() {
   $("#who-admin").hidden = me.role !== "admin";
   $("#open-users").hidden = me.role !== "admin";
   $("#open-admin").hidden = me.role !== "admin";
+  // A Drive link is fetched by the GitHub worker (its minutes are few): the admin only; others upload the file.
+  document.querySelector('[data-tab="drive"]').hidden = me.role !== "admin";
+  // Hint words typed per video go nowhere while hints are off (HINTS): the admin's only, not a puzzle for others.
+  $("#prompt").hidden = me.role !== "admin";
   refresh();
   if (me.role === "admin") countPending();
   const m = location.hash.match(/job=([\w-]+)/);
@@ -1377,7 +1389,55 @@ async function uploadDirect(file, prompt, options, title) {
   await api("direct_finish", {id: start.id, file_id: fileId});
 }
 
+/* Into the queue's bucket on Weaworks, when the backend says so (the queue is on and a SJAMES worker can do the job):
+   8 MB pieces, three at a time, each retried; a piece the queue already has is skipped. Google Drive is not used. */
+async function uploadWeaworks(file, w) {
+  const total = file.size, size = w.part_bytes, have = new Set(w.have || []);
+  const pieceBytes = (k) => Math.min(size, total - k * size);
+  let sent = [...have].reduce((n, k) => n + pieceBytes(k), 0);
+  const show = () => {
+    $("#upload-state").hidden = false;
+    $("#upload-state .bar i").style.width = `${sent / total * 100}%`;
+    $("#upload-text").textContent = `올리는 중 ${sent / 1048576 | 0}MB / ${total / 1048576 | 0}MB (${Math.floor(sent / total * 100)}%)`;
+  };
+  const piece = async (k) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await fetch(`${w.url}/up/${w.id}/${k}?t=${encodeURIComponent(w.pass)}`, {
+          method: "POST", headers: {"Content-Type": "text/plain"}, body: file.slice(k * size, k * size + pieceBytes(k))});
+        const out = await res.json().catch(() => ({}));
+        if (res.ok && out.ok) return;
+        if (res.status === 401 || (res.ok && out.code && out.code !== "server")) {
+          throw Object.assign(new Error(out.error || `업로드가 거절됐어요 (${res.status}). 다시 올려 주세요.`), {final: true});
+        }
+      } catch (err) { if (err.final || attempt >= 6) throw err; }
+      $("#upload-text").textContent = "연결을 기다리는 중… (이어서 올려요)";
+      await wait(2000 * attempt);
+    }
+  };
+  show();
+  const todo = [...Array(w.parts).keys()].filter((k) => !have.has(k));
+  let next = 0;
+  const lane = async () => {
+    while (next < todo.length) {
+      const k = todo[next++];
+      await piece(k);
+      sent += pieceBytes(k);
+      show();
+    }
+  };
+  await Promise.all([lane(), lane(), lane()]);
+  $("#upload-text").textContent = "확인하는 중…";
+  await api("w_upload_finish", {id: w.id});
+}
+
 async function uploadFile(file, prompt, options, title) {
+  let w = {fallback: true};
+  try {
+    w = await api("w_upload_start", {name: file.name, size: file.size, fingerprint: file.fp || "", title, prompt, options,
+                                     folder: currentFolder()?.id || ""});
+  } catch (err) { if (!/알 수 없는 요청/.test(err.message)) throw err; } // an older backend: Drive as before
+  if (!w.fallback) return uploadWeaworks(file, w);
   if (file.size > DIRECT_MIN_BYTES && store.get("vid2md.direct") !== "blocked") {
     try { return await uploadDirect(file, prompt, options, title); }
     catch (err) {
@@ -1691,6 +1751,22 @@ async function downloadMd(id) {
 const mp3Cache = new Map(); // job id -> Blob, so listening and downloading load it once
 async function fetchMp3(job, onProgress) {
   if (mp3Cache.has(job.id)) return mp3Cache.get(job.id);
+  if (job.audio_store === "w") { // in the queue's bucket on Weaworks: one download with a short pass for that file
+    const {url} = await api("audio_link", {id: job.id});
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`음성 파일을 받지 못했어요 (${res.status})`);
+    const length = Number(res.headers.get("Content-Length")) || 0, reader = res.body.getReader(), parts = [];
+    for (let got = 0; ;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      parts.push(value);
+      got += value.length;
+      if (length) onProgress(got / length);
+    }
+    const blob = new Blob(parts, {type: "audio/mpeg"});
+    mp3Cache.set(job.id, blob);
+    return blob;
+  }
   const parts = [];
   for (let index = 0, chunks = 1; index < chunks; index++) {
     onProgress(chunks > 1 ? index / chunks : 0);
