@@ -512,9 +512,6 @@
         <details class="opts" id="opts">
           <summary>추가 기능</summary>
           <div class="stack">
-            <label class="toggle"><input type="checkbox" id="opt-diarize">
-              <span class="t">화자 구분<small>누가 말했는지 표시해요</small></span>
-              <input class="field tiny" type="number" id="opt-speakers" min="1" max="20" placeholder="몇 명" title="화자 수를 알면 입력 (정확도 향상)"></label>
             <label class="toggle"><input type="checkbox" id="opt-denoise">
               <span class="t">배경음악 제거<small>음악이 크게 깔린 영상만 · 느려져요</small></span></label>
             <label class="toggle"><input type="checkbox" id="opt-hq">
@@ -1085,8 +1082,6 @@ async function enter() {
   document.querySelector('[data-tab="drive"]').hidden = me.role !== "admin";
   // Hint words typed per video go nowhere while hints are off (HINTS): the admin's only, not a puzzle for others.
   $("#prompt").hidden = me.role !== "admin";
-  // 화자 구분 needs the GitHub worker and a speaker model token: the admin's only.
-  $("#opt-diarize").closest("label").hidden = me.role !== "admin";
   refresh();
   if (me.role === "admin") countPending();
   const m = location.hash.match(/job=([\w-]+)/);
@@ -1163,7 +1158,7 @@ function pick(file) { picked = file || null; $("#picked").textContent = picked ?
 $("#new-form").onsubmit = async (e) => {
   e.preventDefault(); $("#new-error").textContent = "";
   const prompt = $("#prompt").value, title = $("#title").value.trim();
-  const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
+  const options = {diarize: false, speakers: null, // 화자 구분: taken out (GitHub-only and slow; lectures have one speaker)
                    denoise: $("#opt-denoise").checked, glossary: $("#glossary").value,
                    hq: $("#opt-hq").checked, slides: $("#opt-slides").checked};
   $("#submit").disabled = true;
@@ -1228,7 +1223,7 @@ async function startRecording() {
       : "마이크를 쓸 수 없어요: " + err.message;
     return;
   }
-  const options = {diarize: $("#opt-diarize").checked, speakers: Number($("#opt-speakers").value) || null,
+  const options = {diarize: false, speakers: null, // 화자 구분: taken out (GitHub-only and slow; lectures have one speaker)
                    denoise: $("#opt-denoise").checked, glossary: $("#glossary").value,
                    hq: $("#opt-hq").checked, slides: $("#opt-slides").checked};
   let job;
