@@ -1082,6 +1082,9 @@ async function enter() {
   document.querySelector('[data-tab="drive"]').hidden = me.role !== "admin";
   // Hint words typed per video go nowhere while hints are off (HINTS): the admin's only, not a puzzle for others.
   $("#prompt").hidden = me.role !== "admin";
+  // 추가 기능 (배경음악 제거, 고품질, 화면 글자) need the GitHub worker and its few minutes: the admin's only.
+  $("#opts").hidden = me.role !== "admin";
+  if (me.role !== "admin") ["#opt-denoise", "#opt-hq", "#opt-slides"].forEach((id) => { $(id).checked = false; });
   refresh();
   if (me.role === "admin") countPending();
   const m = location.hash.match(/job=([\w-]+)/);
