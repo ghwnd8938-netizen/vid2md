@@ -135,8 +135,11 @@
     .who-name, #who-admin { display: none; }
     .who .btn.small { padding: 6px 9px; }
     #logout { padding: 6px 4px; }
+    #idle-clock .idle-label, .who .btn-label { display: none; }
   }
   @media (max-width: 420px) { .top .logo-text { display: none; } .top .logo { gap: 0; } }
+  #idle-clock { font-variant-numeric: tabular-nums; color: var(--muted); }
+  #idle-clock.soon { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
   .dot-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent); color: #fff;
     font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
   main.app { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; display: grid; gap: 24px;
@@ -450,11 +453,12 @@
     <span class="logo"><span class="logo-mark"><svg viewBox="0 0 14 14"><path d="M2 1v12l10-6z" fill="#fff"/></svg></span><span class="logo-text"><small>서울야고보지파</small>실력이 바로서야</span></span>
     <div class="spacer"></div>
     <div class="who">
-      <button class="btn small" id="open-dict">📖 용어 사전</button>
+      <button class="btn small" id="open-dict" title="용어 사전">📖<span class="btn-label"> 용어 사전</span></button>
       <button class="btn small" id="open-users" hidden>사용자 <span class="dot-count" id="pending-count" hidden></span></button>
-      <button class="btn small" id="open-admin" hidden>👑 관리</button>
+      <button class="btn small" id="open-admin" hidden title="관리">👑<span class="btn-label"> 관리</span></button>
       <span class="badge accent" id="who-admin" hidden>관리자</span>
       <span class="avatar" id="who-avatar"></span><span class="who-name" id="who-name"></span>
+      <button class="btn small ghost" id="idle-clock" title="자동 로그아웃까지 남은 시간이에요. 누르면 1시간으로 다시 늘어나요.">⏱ <span class="idle-label">자동 로그아웃 </span><span id="idle-left">60:00</span></button>
       <button class="btn small ghost" id="logout">로그아웃</button>
     </div>
   </div>
@@ -785,6 +789,18 @@ function idleOut() {
   return true;
 }
 setInterval(idleOut, 30000);
+/* the time left, shown in the header; pressing it starts the hour again (so does any click or key on the page) */
+function idleClock() {
+  if (!token || $("#who").hidden) return;
+  const last = Math.max(activeAt, Number(store.get("vid2md.active")) || 0);
+  const left = Math.max(0, IDLE_MINUTES * 60000 - (Date.now() - last));
+  const secs = Math.ceil(left / 1000);
+  $("#idle-left").textContent = uploading ? "업로드 중" : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  $("#idle-clock").classList.toggle("soon", !uploading && secs <= 300);
+  if (!left) idleOut();
+}
+setInterval(idleClock, 1000);
+$("#idle-clock").onclick = () => { markActive(true); idleClock(); };
 document.addEventListener("visibilitychange", () => { if (!document.hidden) idleOut(); });
 $("#wait-cancel").onclick = () => { clearTimeout(waitTimer); store.set("vid2md.pending", null); showLogin(); };
 
@@ -896,7 +912,7 @@ async function renderSuggestions() {
 
 /* 💡 on the dictionary button: how many suggestions wait for the admin. */
 function suggBadge(n) {
-  $("#open-dict").textContent = n ? `📖 용어 사전 · 💡 ${n}` : "📖 용어 사전";
+  $("#open-dict").innerHTML = `📖<span class="btn-label"> 용어 사전</span>${n ? ` · 💡 ${Number(n)}` : ""}`;
 }
 async function refreshSuggBadge() {
   if (me?.role !== "admin") return;
