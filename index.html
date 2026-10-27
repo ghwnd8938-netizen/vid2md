@@ -1887,6 +1887,46 @@ async function downloadMp3(job, btn) {
 /* ---------- 들으며 고치기: the MP3 next to the timed lines; edit a line in place, save, and the
    corrections are compared with the machine's words on the server (suggestions for the dictionary). */
 let editorDirty = false;
+/* Lines → sentences: a sentence ends at . ? ! or a closing ending (…다, …요, …까), at a pause of over 3 s, or
+   after 40 s at most, so a sentence box never grows past a few lines. */
+const SENTENCE_END = /([.?!。？！…]|(다|요|까|죠|니다|니까))["'”’)\]]*$/;
+function sentenceUnits(rows) {
+  const out = [];
+  let first = 0;
+  rows.forEach((r, k) => {
+    const next = rows[k + 1];
+    if (!next || SENTENCE_END.test(r.text.trim()) || next.start - (r.end || r.start) > 3 || (next.end || next.start) - rows[first].start > 40) {
+      out.push([first, k]); first = k + 1;
+    }
+  });
+  return out;
+}
+const sentenceText = (parts) => parts.filter(Boolean).join(" ");
+/* A sentence's new text back into its lines. Typing changes one spot at a time: what is the same at the start and
+   the end stays with its line, and a line break inside the changed spot moves to the nearest space. */
+function splitBack(parts, text) {
+  if (parts.length < 2) return [text];
+  let old = "";
+  const starts = parts.map((p) => { if (p && old) old += " "; const at = old.length; old += p; return at; });
+  let head = 0;
+  while (head < old.length && head < text.length && old[head] === text[head]) head++;
+  let tail = 0;
+  while (tail < old.length - head && tail < text.length - head && old[old.length - 1 - tail] === text[text.length - 1 - tail]) tail++;
+  const cuts = starts.map((b, j) => {
+    if (!j) return 0;
+    if (b <= head) return b;
+    if (b >= old.length - tail) return b + text.length - old.length;
+    const q = head + Math.round((b - head) / Math.max(1, old.length - tail - head) * (text.length - tail - head));
+    let best = -1; // the nearest space; none: the line before keeps it all
+    for (let d = 0; d <= text.length; d++) {
+      if (text[q - d] === " ") { best = q - d + 1; break; }
+      if (text[q + d] === " ") { best = q + d + 1; break; }
+    }
+    return best < 0 ? text.length : best;
+  });
+  for (let j = 1; j < cuts.length; j++) cuts[j] = Math.max(cuts[j], cuts[j - 1]);
+  return cuts.map((c, j) => text.slice(c, j + 1 < cuts.length ? cuts[j + 1] : text.length).trim());
+}
 function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
   const rows = segs.map((row, i) => ({i, start: Number(row[0]) || 0, end: Number(row[1]) || 0, text: String(row[2] || ""), saved: String(row[2] || "")}));
   const starts = rows.map((r) => r.start);
@@ -1906,7 +1946,7 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
       <button class="btn small ghost" id="ed-close">닫기</button>
     </div>
     <div class="ed-seek" id="ed-seek"><i></i></div>
-    <div class="ed-note">문장을 눌러 바로 고치세요 · 시간을 누르면 그 부분부터 들려요 · <b>Esc</b>: 재생/멈춤(2초 되감기) · 고친 줄은 노란색으로 표시돼요</div>
+    <div class="ed-note">문장을 눌러 바로 고치세요 · 시간을 누르면 그 부분부터 들려요 · <b>Esc</b>: 재생/멈춤(2초 되감기) · 고친 문장은 노란색으로 표시돼요</div>
     <div class="ai-box" id="ai-box" hidden>
       <div><b>🤖 참고자료로 용어 후보 찾기</b> <span class="muted" style="font-size:12.5px">강의·회의 자료를 넣으면, 자료에 나온 용어를 잘못 받아쓴 곳을 찾아요.</span></div>
       <div class="ai-row"><input type="file" id="ai-files" multiple accept=".pdf,.pptx,.docx,.txt,.md"><span class="muted" id="ai-info" style="font-size:12.5px"></span></div>
@@ -1924,27 +1964,37 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
     <audio id="ed-audio" preload="auto"></audio>
     <div id="ed-rows"></div></div>`;
   const box = $("#ed-rows"), audio = $("#ed-audio");
-  box.innerHTML = rows.map((r) => `<div class="ed-row" data-i="${r.i}"><button class="ed-t" type="button" data-i="${r.i}">${fmtTime(r.start * 1000)}</button>
-    <div class="ed-txt" spellcheck="false">${esc(r.text)}</div></div>`).join("");
-  const rowEls = [...box.querySelectorAll(".ed-row")];
+  /* The screen shows whole sentences; the transcript keeps its timed lines (training needs their times), so a
+     sentence is a run of lines and what is typed into it is shared back out to them (sentenceText, splitBack). */
+  const units = sentenceUnits(rows).map(([first, last]) => ({first, last}));
+  const unitOf = [];
+  units.forEach((u, n) => { for (let k = u.first; k <= u.last; k++) unitOf[k] = n; });
+  const unitRows = (u) => rows.slice(u.first, u.last + 1);
+  box.innerHTML = units.map((u, n) => `<div class="ed-row" data-u="${n}"><button class="ed-t" type="button" data-i="${u.first}">${fmtTime(rows[u.first].start * 1000)}</button>
+    <div class="ed-txt" spellcheck="false">${esc(sentenceText(unitRows(u).map((r) => r.text)))}</div></div>`).join("");
+  const unitEls = [...box.querySelectorAll(".ed-row")];
+  units.forEach((u, n) => { u.el = unitEls[n]; u.txt = unitEls[n].querySelector(".ed-txt"); });
+  const rowEl = (k) => units[unitOf[k]]?.el;
+  const markEdited = (u) => u.el.classList.toggle("edited", unitRows(u).some((r) => r.text !== r.saved));
+  const showUnit = (u) => { u.txt.innerText = sentenceText(unitRows(u).map((r) => r.text)); markEdited(u); };
   const edited = () => rows.filter((r) => r.text !== r.saved);
   const markDirty = () => {
     const n = edited().length;
     editorDirty = n > 0;
     $("#ed-save").disabled = !n;
-    $("#ed-status").textContent = n ? `고친 줄 ${n}개 · 저장 전` : "";
+    $("#ed-status").textContent = n ? `고친 곳 ${units.filter((u) => u.el.classList.contains("edited")).length}문장 · 저장 전` : "";
   };
-  rowEls.forEach((el) => {
-    const txt = el.querySelector(".ed-txt");
+  units.forEach((u) => {
+    const txt = u.txt;
     txt.contentEditable = "plaintext-only";
     if (txt.contentEditable !== "plaintext-only") txt.contentEditable = "true"; // older browsers
     txt.addEventListener("input", () => {
-      const r = rows[Number(el.dataset.i)];
-      r.text = txt.innerText.replace(/\s+/g, " ").trim();
-      el.classList.toggle("edited", r.text !== r.saved);
+      const parts = splitBack(unitRows(u).map((r) => r.text), txt.innerText.replace(/\s+/g, " ").trim());
+      unitRows(u).forEach((r, j) => { r.text = parts[j]; });
+      markEdited(u);
       markDirty();
     });
-    txt.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); txt.blur(); } }); // one line per segment
+    txt.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); txt.blur(); } }); // one sentence per box
     txt.addEventListener("paste", (e) => { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData.getData("text") || "").replace(/\s+/g, " ")); });
   });
   // Playback
@@ -1963,12 +2013,16 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
   if (wordMark) CSS.highlights.set("ed-word", wordMark);
   let wordKey = "";
   const markWord = () => {
-    const k = at(audio.currentTime), el = rowEls[k], r = rows[k];
-    if (!wordMark || !el || !r) { if (wordMark && wordKey) { wordMark.clear(); wordKey = ""; } return; }
+    const k = at(audio.currentTime), u = units[unitOf[k]], r = rows[k];
+    if (!wordMark || !u || !r) { if (wordMark && wordKey) { wordMark.clear(); wordKey = ""; } return; }
     const end = r.end > r.start ? r.end : (rows[k + 1]?.start ?? r.start + 5);
     const f = Math.min(1, Math.max(0, (audio.currentTime - r.start) / Math.max(0.1, end - r.start)));
-    const txt = el.querySelector(".ed-txt"), text = txt.textContent;
-    const words = [...text.matchAll(/\S+/g)];
+    // the playing line's words inside its sentence (skipped while the box holds text not yet shared back the same way)
+    const txt = u.txt, text = txt.textContent;
+    if (text !== sentenceText(unitRows(u).map((x) => x.text))) return;
+    let lead = 0;
+    for (let j = u.first; j < k; j++) if (rows[j].text) lead += rows[j].text.length + 1;
+    const words = [...r.text.matchAll(/\S+/g)].map((w) => Object.assign(w, {index: w.index + lead}));
     if (!words.length) return;
     const weight = (w) => w[0].replace(/[^\p{L}\p{N}]/gu, "").length + 0.6; // letters, plus a little for the pause after
     const total = words.reduce((n, w) => n + weight(w), 0);
@@ -1996,12 +2050,12 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
     const t = audio.currentTime;
     $("#ed-time").textContent = `${fmtTime(t * 1000)} / ${fmtTime((audio.duration || 0) * 1000)}`;
     $("#ed-seek i").style.width = `${audio.duration ? t / audio.duration * 100 : 0}%`;
-    const k = at(t);
+    const k = unitOf[at(t)] ?? -1;
     markWord(); // also after a jump while paused
     if (k === current) return;
-    rowEls[current]?.classList.remove("now");
+    units[current]?.el.classList.remove("now");
     current = k;
-    const el = rowEls[k];
+    const el = units[k]?.el;
     if (!el) return;
     el.classList.add("now");
     // Follow the voice, but never move the page while someone is typing.
@@ -2055,8 +2109,7 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
       const r = rows[c.line];
       if (!r || r.text.indexOf(c.wrong) < 0) { el.remove(); return false; }
       r.text = r.text.replace(c.wrong, c.right);
-      rowEls[c.line].querySelector(".ed-txt").innerText = r.text;
-      rowEls[c.line].classList.toggle("edited", r.text !== r.saved);
+      showUnit(units[unitOf[c.line]]);
       el.remove();
       return true;
     };
@@ -2075,7 +2128,7 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
           <span class="spacer"></span><button class="btn small accent" data-act="ok" type="button">적용</button><button class="btn small ghost" data-act="no" type="button">무시</button></div>`).join("");
       list.querySelectorAll(".ai-c").forEach((el) => {
         const c = r.candidates[Number(el.dataset.k)];
-        el.querySelector(".ed-t").onclick = () => { rowEls[c.line]?.scrollIntoView({block: "center", behavior: "smooth"}); play(rows[c.line].start); };
+        el.querySelector(".ed-t").onclick = () => { rowEl(c.line)?.scrollIntoView({block: "center", behavior: "smooth"}); play(rows[c.line].start); };
         el.querySelector('[data-act="ok"]').onclick = () => { apply(c, el); markDirty(); };
         el.querySelector('[data-act="no"]').onclick = () => el.remove();
       });
@@ -2092,8 +2145,7 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
       const r = rows[k];
       if (!r) return;
       r.text = text;
-      rowEls[k].querySelector(".ed-txt").innerText = text;
-      rowEls[k].classList.toggle("edited", r.text !== r.saved);
+      showUnit(units[unitOf[k]]);
       markDirty();
     };
     const blist = $("#bible-list");
@@ -2110,7 +2162,7 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
     }).join("");
     blist.querySelectorAll(".ai-c").forEach((el) => {
       const f = bible[Number(el.dataset.k)];
-      el.querySelector(".ed-t").onclick = () => { rowEls[f.line]?.scrollIntoView({block: "center", behavior: "smooth"}); play(rows[f.line]?.start); };
+      el.querySelector(".ed-t").onclick = () => { rowEl(f.line)?.scrollIntoView({block: "center", behavior: "smooth"}); play(rows[f.line]?.start); };
       el.querySelector('[data-act="no"]')?.addEventListener("click", () => el.remove());
       el.querySelector('[data-act="ok"]')?.addEventListener("click", () => {
         const r = rows[f.line];
@@ -2129,7 +2181,8 @@ function openEditor(job, segs, aiTerms, aiPrivate, slides, bible) {
     const changes = edited();
     try {
       const r = await api("save_edits", {id: job.id, edits: changes.map((x) => [x.i, x.text])});
-      changes.forEach((x) => { x.saved = x.text; rowEls[x.i].classList.remove("edited"); });
+      changes.forEach((x) => { x.saved = x.text; });
+      units.forEach(markEdited);
       markDirty();
       const where = Object.entries(r.groups || {}).map(([g, n]) => `${g ? packLabel(g) : "공통"} ${n}`).join(", ");
       $("#ed-status").textContent = `저장했어요 · ${r.changed}줄` + (r.learned ? ` · 💡 추천 ${r.learned}개 (${where})` : "")
